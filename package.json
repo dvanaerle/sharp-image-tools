@@ -1,0 +1,13 @@
+{
+  "name": "sharp-image-tools",
+  "version": "1.0.0",
+  "main": "crop-and-resize.js",
+  "license": "ISC",
+  "type": "commonjs",
+  "scripts": {
+    "build": "node crop-and-resize.js"
+  },
+  "dependencies": {
+    "sharp": "^0.34.5"
+  }
+}
