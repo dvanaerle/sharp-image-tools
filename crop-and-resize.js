@@ -4,7 +4,7 @@ const fs = require("fs").promises;
 
 const inputDir = "./01_input";
 const outputDir = "./02_output";
-const includeDimensionsInFileName = false;
+const includeDimensionsInFileName = true;
 const formatsEnabled = true;
 const folderSizePresets = {
   // home: {
