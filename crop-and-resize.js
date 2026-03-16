@@ -64,9 +64,9 @@ const watermarkConfig = {
   //   },
   // ],
   position: "bottom-left",
-  opacity: 0.3,
-  margin: { left: 30, right: 30, bottom: 30, top: 30 },
-  scale: 0.25,
+  opacity: 0.8,
+  marginPercent: { x: 0.05, y: 0.045 },
+  scale: 0.125,
   fixedSize: false,
   // maxWidth: 512,
   // maxHeight: 512,
@@ -75,8 +75,7 @@ const watermarkConfig = {
 const formats = [
   {
     sizes: [
-      { width: 1200, height: 675 },
-      { width: 1080, height: 607 },
+      { width: 1534, height: 863 }
     ],
     top: 0.5,
     left: 0.5,
@@ -93,6 +92,36 @@ const overlayCache = new Map();
 
 function isPositiveNumber(value) {
   return Number.isFinite(value) && value > 0;
+}
+
+function getFluidMargin(width, height, marginPercent) {
+  const baseSize = Math.min(width, height);
+
+  if (Number.isFinite(marginPercent)) {
+    const percent = marginPercent >= 0 ? marginPercent : 0;
+    const margin = Math.round(baseSize * percent);
+    return {
+      left: margin,
+      right: margin,
+      top: margin,
+      bottom: margin,
+    };
+  }
+
+  const horizontalPercent =
+    Number.isFinite(marginPercent?.x) && marginPercent.x >= 0
+      ? marginPercent.x
+      : 0;
+  const verticalPercent =
+    Number.isFinite(marginPercent?.y) && marginPercent.y >= 0
+      ? marginPercent.y
+      : 0;
+  return {
+    left: Math.round(baseSize * horizontalPercent),
+    right: Math.round(baseSize * horizontalPercent),
+    top: Math.round(baseSize * verticalPercent),
+    bottom: Math.round(baseSize * verticalPercent),
+  };
 }
 
 function getCoverResize(srcWidth, srcHeight, targetWidth, targetHeight) {
@@ -338,7 +367,7 @@ async function getImageFiles(dir) {
 
             if (watermarkAsset) {
               const {
-                margin: baseMargin,
+                marginPercent: baseMarginPercent,
                 scale: wmScale,
                 opacity,
                 position,
@@ -346,10 +375,14 @@ async function getImageFiles(dir) {
                 maxHeight,
                 fixedSize,
               } = watermarkConfig;
-              const margin =
-                (folderPresetKey &&
-                  folderSizePresets[folderPresetKey].watermarkMargin) ||
-                baseMargin;
+              const presetMarginPercent = folderPresetKey
+                ? folderSizePresets[folderPresetKey].watermarkMarginPercent
+                : undefined;
+              const margin = getFluidMargin(
+                width,
+                height,
+                presetMarginPercent ?? baseMarginPercent,
+              );
               const presetWatermarkPosition = folderPresetKey
                 ? folderSizePresets[folderPresetKey].watermarkPosition
                 : undefined;
