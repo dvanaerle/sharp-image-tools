@@ -1,3 +1,5 @@
+"use strict";
+
 const sharp = require("sharp");
 const path = require("path");
 const fs = require("fs").promises;
@@ -6,83 +8,112 @@ const inputDir = "./01_input";
 const outputDir = "./02_output";
 const includeDimensionsInFileName = true;
 const formatsEnabled = true;
+
+/*
+folderSizePresets usage:
+
+{
+  "tm-showrooms": {
+    sizes: [
+      { width: 1200, height: 800 },
+      { width: 384, height: 216 },
+    ],
+    top: 0.5,
+    left: 0.5,
+  },
+  category: {
+    width: 1531,
+    height: 1010,
+    watermarkPosition: "top-right",
+    watermarkMarginPercent: { x: 0.05, y: 0.045 },
+    watermarkMaxWidth: 576,
+    watermarkMaxHeight: 576,
+  },
+}
+*/
 const folderSizePresets = {
-  // home: {
-  //   width: 1200,
-  //   height: 675,
-  //   watermarkPosition: "bottom-right",
-  //   watermarkMargin: { right: 20, bottom: 60 },
-  // },
-  // schuifwand: {
-  //   width: 1000,
-  //   height: 563,
-  //   watermarkPosition: "bottom-left",
-  // },
-  // verlichting: {
-  //   width: 926,
-  //   height: 521,
-  //   watermarkPosition: "top-left",
-  //   watermarkMaxWidth: 448,
-  //   watermarkMaxHeight: 448,
-  // },
-  // category: {
-  //   width: 1531,
-  //   height: 1010,
-  //   watermarkPosition: "top-right",
-  //   watermarkMaxWidth: 576,
-  //   watermarkMaxHeight: 576,
-  // },
+  "tm-showrooms": {
+    sizes: [
+      { width: 1200, height: 800 },
+      { width: 384, height: 216 },
+    ],
+  },
 };
 
+/*
+overlayConfig usage:
+
+{
+  enabled: true,
+}
+*/
 const overlayConfig = {
   enabled: false,
 };
 
-const watermarkConfig = {
+/*
+watermarkConfig usage:
+
+{
   enabled: true,
   imagePath: "./watermark/Gumax_Logo_SVG_White.svg",
-  // presets: [
-  //   {
-  //     folder: "NL-BE",
-  //     imagePath:
-  //       "./watermark/2026-22-02_Winterkorting_Logo_verlengd_RGB_NL.svg",
-  //   },
-  //   {
-  //     folder: "DE",
-  //     imagePath:
-  //       "./watermark/2026-22-02_Winterkorting_Logo_verlengd_RGB_DE.svg",
-  //   },
-  //   {
-  //     folder: "BE-FR",
-  //     imagePath:
-  //       "./watermark/2026-22-02_Winterkorting_Logo_verlengd_RGB_FR.svg",
-  //   },
-  //   {
-  //     folder: "UK",
-  //     imagePath:
-  //       "./watermark/2026-22-02_Winterkorting_Logo_verlengd_RGB_EN.svg",
-  //   },
-  // ],
+  presets: [
+    {
+      folder: "DE",
+      imagePath: "./watermark/watermark_DE.svg",
+    },
+  ],
   position: "bottom-left",
   opacity: 0.8,
   marginPercent: { x: 0.05, y: 0.045 },
   scale: 0.125,
   fixedSize: false,
-  // maxWidth: 512,
-  // maxHeight: 512,
+  maxWidth: 512,
+  maxHeight: 512,
+}
+*/
+const watermarkConfig = {
+  enabled: false,
+  imagePath: "./watermark/Gumax_Logo_SVG_White.svg",
+  position: "bottom-left",
+  opacity: 0.8,
+  marginPercent: { x: 0.05, y: 0.045 },
+  scale: 0.125,
+  fixedSize: false,
 };
 
-const formats = [
+/*
+formats usage:
+
+[
   {
     sizes: [
-      { width: 1534, height: 863 }
+      { width: 1200, height: 800 },
+      { width: 384, height: 216 },
     ],
     top: 0.5,
     left: 0.5,
-    // blurSigma: 0,
-    // blurReferenceSize: { width: 1080, height: 608 },
-    // resizeWidth: 3500,
-    // resizeHeight: 1750,
+    blurSigma: 0,
+    blurReferenceSize: { width: 1080, height: 608 },
+    resizeWidth: 3500,
+    resizeHeight: 1750,
+  },
+]
+*/
+const formats = [
+  {
+    sizes: [
+      {
+        width: 1366,
+        height: 768,
+      },
+      {
+        width: 1366,
+        height: 768,
+      },
+    ],
+    top: 0.5,
+    left: 0.5,
   },
 ];
 
@@ -132,6 +163,55 @@ function getCoverResize(srcWidth, srcHeight, targetWidth, targetHeight) {
   };
 }
 
+function isCropWithinBounds({
+  offsetX,
+  offsetY,
+  width,
+  height,
+  targetResizeWidth,
+  targetResizeHeight,
+}) {
+  return (
+    offsetX >= 0 &&
+    offsetY >= 0 &&
+    offsetX + width <= targetResizeWidth &&
+    offsetY + height <= targetResizeHeight
+  );
+}
+
+function createResizeCropPlan({
+  srcWidth,
+  srcHeight,
+  width,
+  height,
+  resizeWidth,
+  resizeHeight,
+  top,
+  left,
+}) {
+  const { width: targetResizeWidth, height: targetResizeHeight } =
+    Number.isFinite(resizeWidth) && Number.isFinite(resizeHeight)
+      ? { width: resizeWidth, height: resizeHeight }
+      : getCoverResize(srcWidth, srcHeight, width, height);
+  const offsetX = Math.round((targetResizeWidth - width) * left);
+  const offsetY = Math.round((targetResizeHeight - height) * top);
+
+  return {
+    targetResizeWidth,
+    targetResizeHeight,
+    offsetX,
+    offsetY,
+    valid: isCropWithinBounds({
+      offsetX,
+      offsetY,
+      width,
+      height,
+      targetResizeWidth,
+      targetResizeHeight,
+    }),
+  };
+}
+
 function getOrientedDimensions(metadata) {
   const oriented = metadata.autoOrient;
   return {
@@ -169,6 +249,200 @@ function getWatermarkPathForImage(dirSegments) {
       )
     : null;
   return preset?.imagePath || watermarkConfig.imagePath;
+}
+
+function getWatermarkConfigValue({
+  folderPreset,
+  presetKey,
+  activeWatermarkConfig,
+  configKey,
+}) {
+  return folderPreset[presetKey] ?? activeWatermarkConfig[configKey];
+}
+
+function getInitialWatermarkWidth({
+  imageWidth,
+  maxWmWidth,
+  activeWatermarkConfig,
+}) {
+  if (activeWatermarkConfig.fixedSize) {
+    return maxWmWidth;
+  }
+
+  return Math.round(imageWidth * activeWatermarkConfig.scale);
+}
+
+function limitPositiveSize(value, maxValue) {
+  if (!isPositiveNumber(maxValue)) {
+    return value;
+  }
+
+  return Math.min(value, maxValue);
+}
+
+function getWatermarkWidthAfterHeightLimit({
+  width,
+  height,
+  limitedHeight,
+  aspect,
+}) {
+  if (limitedHeight === height) {
+    return width;
+  }
+
+  return Math.round(limitedHeight / aspect);
+}
+
+function getWatermarkSize({
+  imageWidth,
+  watermarkWidth,
+  watermarkHeight,
+  watermarkConfig: activeWatermarkConfig,
+  folderPreset,
+}) {
+  const maxWmWidth = getWatermarkConfigValue({
+    folderPreset,
+    presetKey: "watermarkMaxWidth",
+    activeWatermarkConfig,
+    configKey: "maxWidth",
+  });
+  const maxWmHeight = getWatermarkConfigValue({
+    folderPreset,
+    presetKey: "watermarkMaxHeight",
+    activeWatermarkConfig,
+    configKey: "maxHeight",
+  });
+  const wmAspect = watermarkHeight / watermarkWidth;
+  const initialWidth = getInitialWatermarkWidth({
+    imageWidth,
+    maxWmWidth,
+    activeWatermarkConfig,
+  });
+  const heightAfterWidth = Math.round(initialWidth * wmAspect);
+  const widthLimitedByMaxWidth = limitPositiveSize(initialWidth, maxWmWidth);
+  const heightLimitedByMaxWidth =
+    widthLimitedByMaxWidth === initialWidth
+      ? heightAfterWidth
+      : Math.round(widthLimitedByMaxWidth * wmAspect);
+  const height = limitPositiveSize(heightLimitedByMaxWidth, maxWmHeight);
+  const width = getWatermarkWidthAfterHeightLimit({
+    width: widthLimitedByMaxWidth,
+    height: heightLimitedByMaxWidth,
+    limitedHeight: height,
+    aspect: wmAspect,
+  });
+
+  return { width, height };
+}
+
+function getWatermarkCoordinates({
+  imageWidth,
+  imageHeight,
+  width,
+  height,
+  margin,
+  position,
+}) {
+  const positions = {
+    "top-left": { left: margin.left, top: margin.top },
+    "top-right": {
+      left: imageWidth - width - margin.right,
+      top: margin.top,
+    },
+    "bottom-left": {
+      left: margin.left,
+      top: imageHeight - height - margin.bottom,
+    },
+    "bottom-right": {
+      left: imageWidth - width - margin.right,
+      top: imageHeight - height - margin.bottom,
+    },
+    center: {
+      left: (imageWidth - width) / 2,
+      top: (imageHeight - height) / 2,
+    },
+  };
+  const coordinates = positions[position] || positions["bottom-right"];
+
+  return {
+    left: Math.round(coordinates.left),
+    top: Math.round(coordinates.top),
+  };
+}
+
+function isWatermarkInsideImage({
+  imageWidth,
+  imageHeight,
+  watermarkWidth,
+  watermarkHeight,
+  left,
+  top,
+}) {
+  return (
+    left >= 0 &&
+    top >= 0 &&
+    left + watermarkWidth <= imageWidth &&
+    top + watermarkHeight <= imageHeight
+  );
+}
+
+function getWatermarkPlacement({
+  imageWidth,
+  imageHeight,
+  watermarkWidth,
+  watermarkHeight,
+  watermarkConfig: activeWatermarkConfig,
+  folderPreset,
+}) {
+  const { width, height } = getWatermarkSize({
+    imageWidth,
+    watermarkWidth,
+    watermarkHeight,
+    watermarkConfig: activeWatermarkConfig,
+    folderPreset,
+  });
+
+  if (!isPositiveNumber(width) || !isPositiveNumber(height)) {
+    return {
+      width,
+      height,
+      left: 0,
+      top: 0,
+      valid: false,
+      reason: "invalid-size",
+    };
+  }
+
+  const margin = getFluidMargin(
+    imageWidth,
+    imageHeight,
+    folderPreset.watermarkMarginPercent ?? activeWatermarkConfig.marginPercent,
+  );
+  const { left, top } = getWatermarkCoordinates({
+    imageWidth,
+    imageHeight,
+    width,
+    height,
+    margin,
+    position: folderPreset.watermarkPosition || activeWatermarkConfig.position,
+  });
+  const valid = isWatermarkInsideImage({
+    imageWidth,
+    imageHeight,
+    watermarkWidth: width,
+    watermarkHeight: height,
+    left,
+    top,
+  });
+
+  return {
+    width,
+    height,
+    left,
+    top,
+    valid,
+    ...(valid ? {} : { reason: "placement-out-of-bounds" }),
+  };
 }
 
 async function getWatermarkAsset(watermarkPath) {
@@ -228,20 +502,110 @@ async function getImageFiles(dir) {
   return files.flat();
 }
 
-(async () => {
+function getImageContext({ inputDir, imageFile }) {
+  const relativePath = path.relative(inputDir, imageFile);
+  const relativeDir = path.dirname(relativePath);
+  const dirSegments = relativeDir === "." ? [] : relativeDir.split(path.sep);
+
+  return {
+    srcImage: imageFile,
+    relativePath,
+    baseName: path.parse(relativePath).name,
+    relativeDir,
+    dirSegments,
+    dirSegmentsLower: dirSegments.map((segment) => segment.toLowerCase()),
+  };
+}
+
+function getOutputFormatForSource(filePath) {
+  return path.extname(filePath).toLowerCase() === ".png" ? "png" : "jpeg";
+}
+
+function getOutputFileName({
+  baseName,
+  width,
+  height,
+  includeDimensions,
+  outputFormat,
+}) {
+  const extension = outputFormat === "png" ? "png" : "jpg";
+  if (!includeDimensions) {
+    return `${baseName}.${extension}`;
+  }
+  return `${baseName}-${width}x${height}.${extension}`;
+}
+
+function applyOutputFormat(pipeline, outputFormat) {
+  if (outputFormat === "png") {
+    return pipeline.png({
+      compressionLevel: 9,
+      adaptiveFiltering: true,
+      palette: true,
+      effort: 10,
+    });
+  }
+
+  return pipeline.jpeg({ mozjpeg: true, quality: 75 });
+}
+
+function getActiveFormatsForDirectory({
+  dirSegmentsLower,
+  srcWidth,
+  srcHeight,
+}) {
+  const folderPresetKey = Object.keys(folderSizePresets).find((key) =>
+    dirSegmentsLower.includes(key),
+  );
+  const folderPreset = folderSizePresets[folderPresetKey];
+
+  if (folderPreset) {
+    return {
+      folderPresetKey,
+      formats: [
+        {
+          sizes: folderPreset.sizes ?? [
+            {
+              width: folderPreset.width,
+              height: folderPreset.height,
+            },
+          ],
+          top: folderPreset.top ?? 0.5,
+          left: folderPreset.left ?? 0.5,
+        },
+      ],
+    };
+  }
+
+  return {
+    folderPresetKey,
+    formats: formatsEnabled
+      ? formats
+      : [
+          {
+            sizes: [{ width: srcWidth, height: srcHeight }],
+            resizeWidth: srcWidth,
+            resizeHeight: srcHeight,
+            top: 0,
+            left: 0,
+          },
+        ],
+  };
+}
+
+async function processImages() {
   const imageFiles = await getImageFiles(inputDir);
 
   console.log(`Found ${imageFiles.length} image(s) to process`);
 
   for (const imageFile of imageFiles) {
-    const srcImage = imageFile;
-    const relativePath = path.relative(inputDir, imageFile);
-    const baseName = path.parse(relativePath).name;
-    const relativeDir = path.dirname(relativePath);
-    const dirSegments = relativeDir === "." ? [] : relativeDir.split(path.sep);
-    const dirSegmentsLower = dirSegments.map((segment) =>
-      segment.toLowerCase(),
-    );
+    const {
+      srcImage,
+      relativePath,
+      baseName,
+      relativeDir,
+      dirSegments,
+      dirSegmentsLower,
+    } = getImageContext({ inputDir, imageFile });
 
     console.log(`\nProcessing: ${relativePath}`);
 
@@ -249,6 +613,7 @@ async function getImageFiles(dir) {
       const srcMetadata = await sharp(srcImage).metadata();
       const { width: srcWidth, height: srcHeight } =
         getOrientedDimensions(srcMetadata);
+      const outputFormat = getOutputFormatForSource(srcImage);
 
       if (!isPositiveNumber(srcWidth) || !isPositiveNumber(srcHeight)) {
         console.warn("  Skipping: could not read source dimensions.");
@@ -257,33 +622,12 @@ async function getImageFiles(dir) {
 
       console.log(`  Oriented size: ${srcWidth}x${srcHeight}`);
 
-      const folderPresetKey = Object.keys(folderSizePresets).find((key) =>
-        dirSegmentsLower.includes(key),
-      );
-      const activeFormats = folderPresetKey
-        ? [
-            {
-              sizes: [
-                {
-                  width: folderSizePresets[folderPresetKey].width,
-                  height: folderSizePresets[folderPresetKey].height,
-                },
-              ],
-              top: folderSizePresets[folderPresetKey].top ?? 0.5,
-              left: folderSizePresets[folderPresetKey].left ?? 0.5,
-            },
-          ]
-        : formatsEnabled
-          ? formats
-          : [
-              {
-                sizes: [{ width: srcWidth, height: srcHeight }],
-                resizeWidth: srcWidth,
-                resizeHeight: srcHeight,
-                top: 0,
-                left: 0,
-              },
-            ];
+      const { folderPresetKey, formats: activeFormats } =
+        getActiveFormatsForDirectory({
+          dirSegmentsLower,
+          srcWidth,
+          srcHeight,
+        });
 
       let watermarkAsset = null;
       if (watermarkConfig.enabled) {
@@ -308,31 +652,39 @@ async function getImageFiles(dir) {
         left,
       } of activeFormats) {
         for (const { width, height } of sizes) {
-          const { width: targetResizeWidth, height: targetResizeHeight } =
-            Number.isFinite(resizeWidth) && Number.isFinite(resizeHeight)
-              ? { width: resizeWidth, height: resizeHeight }
-              : getCoverResize(srcWidth, srcHeight, width, height);
-
-          const offsetX = Math.round((targetResizeWidth - width) * left);
-          const offsetY = Math.round((targetResizeHeight - height) * top);
+          const {
+            targetResizeWidth,
+            targetResizeHeight,
+            offsetX,
+            offsetY,
+            valid: cropIsValid,
+          } = createResizeCropPlan({
+            srcWidth,
+            srcHeight,
+            width,
+            height,
+            resizeWidth,
+            resizeHeight,
+            top,
+            left,
+          });
 
           console.log(
             `  Resizing to ${targetResizeWidth}x${targetResizeHeight}, cropping ${width}x${height} at ${offsetX},${offsetY}`,
           );
 
-          const fileName = includeDimensionsInFileName
-            ? `${baseName}-${width}x${height}.jpg`
-            : `${baseName}.jpg`;
+          const fileName = getOutputFileName({
+            baseName,
+            width,
+            height,
+            includeDimensions: includeDimensionsInFileName,
+            outputFormat,
+          });
           const outputSubdir = path.join(outputDir, relativeDir);
           const outputPath = path.join(outputSubdir, fileName);
 
           try {
-            if (
-              offsetX < 0 ||
-              offsetY < 0 ||
-              offsetX + width > targetResizeWidth ||
-              offsetY + height > targetResizeHeight
-            ) {
+            if (!cropIsValid) {
               console.warn(`  Skipping invalid crop for ${fileName}`);
               continue;
             }
@@ -366,106 +718,36 @@ async function getImageFiles(dir) {
             }
 
             if (watermarkAsset) {
-              const {
-                marginPercent: baseMarginPercent,
-                scale: wmScale,
-                opacity,
-                position,
-                maxWidth,
-                maxHeight,
-                fixedSize,
-              } = watermarkConfig;
-              const presetMarginPercent = folderPresetKey
-                ? folderSizePresets[folderPresetKey].watermarkMarginPercent
-                : undefined;
-              const margin = getFluidMargin(
-                width,
-                height,
-                presetMarginPercent ?? baseMarginPercent,
-              );
-              const presetWatermarkPosition = folderPresetKey
-                ? folderSizePresets[folderPresetKey].watermarkPosition
-                : undefined;
-              const watermarkPosition = presetWatermarkPosition || position;
+              const placement = getWatermarkPlacement({
+                imageWidth: width,
+                imageHeight: height,
+                watermarkWidth: watermarkAsset.metadata.width,
+                watermarkHeight: watermarkAsset.metadata.height,
+                watermarkConfig,
+                folderPreset: folderPresetKey
+                  ? folderSizePresets[folderPresetKey]
+                  : {},
+              });
 
-              const presetMaxWidth = folderPresetKey
-                ? folderSizePresets[folderPresetKey].watermarkMaxWidth
-                : undefined;
-              const presetMaxHeight = folderPresetKey
-                ? folderSizePresets[folderPresetKey].watermarkMaxHeight
-                : undefined;
-              const maxWmWidth = presetMaxWidth ?? maxWidth;
-              const maxWmHeight = presetMaxHeight ?? maxHeight;
-              const wmAspect =
-                watermarkAsset.metadata.height / watermarkAsset.metadata.width;
-
-              let wmWidth = fixedSize
-                ? maxWmWidth
-                : Math.round(width * wmScale);
-              let wmHeight = Math.round(wmWidth * wmAspect);
-
-              if (isPositiveNumber(maxWmWidth) && wmWidth > maxWmWidth) {
-                wmWidth = maxWmWidth;
-                wmHeight = Math.round(wmWidth * wmAspect);
-              }
-              if (isPositiveNumber(maxWmHeight) && wmHeight > maxWmHeight) {
-                wmHeight = maxWmHeight;
-                wmWidth = Math.round(wmHeight / wmAspect);
-              }
-
-              if (isPositiveNumber(wmWidth) && isPositiveNumber(wmHeight)) {
-                const marginLeft = margin.left ?? 0;
-                const marginRight = margin.right ?? 0;
-                const marginTop = margin.top ?? 0;
-                const marginBottom = margin.bottom ?? 0;
-                const positions = {
-                  "top-left": { left: marginLeft, top: marginTop },
-                  "top-right": {
-                    left: width - wmWidth - marginRight,
-                    top: marginTop,
-                  },
-                  "bottom-left": {
-                    left: marginLeft,
-                    top: height - wmHeight - marginBottom,
-                  },
-                  "bottom-right": {
-                    left: width - wmWidth - marginRight,
-                    top: height - wmHeight - marginBottom,
-                  },
-                  center: {
-                    left: (width - wmWidth) / 2,
-                    top: (height - wmHeight) / 2,
-                  },
-                };
-
-                const { left: wmLeft, top: wmTop } =
-                  positions[watermarkPosition] || positions["bottom-right"];
-
-                if (
-                  wmLeft >= 0 &&
-                  wmTop >= 0 &&
-                  wmLeft + wmWidth <= width &&
-                  wmTop + wmHeight <= height
-                ) {
-                  const wmBuffer = await getWatermarkBuffer(
-                    watermarkAsset,
-                    wmWidth,
-                    wmHeight,
-                    opacity,
-                  );
-                  composites.push({
-                    input: wmBuffer,
-                    left: Math.round(wmLeft),
-                    top: Math.round(wmTop),
-                  });
-                } else {
-                  console.warn(
-                    `  Skipping watermark for ${fileName}: placement out of bounds.`,
-                  );
-                }
-              } else {
+              if (placement.valid) {
+                const wmBuffer = await getWatermarkBuffer(
+                  watermarkAsset,
+                  placement.width,
+                  placement.height,
+                  watermarkConfig.opacity,
+                );
+                composites.push({
+                  input: wmBuffer,
+                  left: placement.left,
+                  top: placement.top,
+                });
+              } else if (placement.reason === "invalid-size") {
                 console.warn(
                   `  Skipping watermark for ${fileName}: invalid size.`,
+                );
+              } else {
+                console.warn(
+                  `  Skipping watermark for ${fileName}: placement out of bounds.`,
                 );
               }
             }
@@ -474,9 +756,7 @@ async function getImageFiles(dir) {
               pipeline = pipeline.composite(composites);
             }
 
-            await pipeline
-              .jpeg({ mozjpeg: true, quality: 75 })
-              .toFile(outputPath);
+            await applyOutputFormat(pipeline, outputFormat).toFile(outputPath);
             console.log(`  Saved: ${fileName}`);
           } catch (err) {
             console.error(`  Error: ${fileName}`, err);
@@ -489,4 +769,15 @@ async function getImageFiles(dir) {
   }
 
   console.log("\nAll images processed!");
-})();
+}
+
+if (require.main === module) {
+  processImages();
+}
+
+module.exports = {
+  getActiveFormatsForDirectory,
+  getOutputFormatForSource,
+  getOutputFileName,
+  processImages,
+};

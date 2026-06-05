@@ -2,8 +2,9 @@
 node_modules/
 
 # Build and generated output
-01_input/*
-02_output/*
+01_input/
+02_output/
+archive/
 dist/
 build/
 coverage/

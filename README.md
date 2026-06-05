@@ -28,7 +28,8 @@ npm run build
 
 ## Output Behavior
 
-- Exports JPEG files.
+- Exports optimized PNG for `.png` inputs.
+- Exports JPEG for non-PNG inputs (`.jpg`, `.jpeg`, `.webp`).
 - Adds dimensions to filenames (example: `hero-1200x675.jpg`).
 - Applies folder-based size presets when folder names match:
   - `home`
