@@ -35,8 +35,17 @@ const folderSizePresets = {
   "tm-showrooms": {
     sizes: [
       { width: 1200, height: 800 },
+      { width: 1080, height: 608 },
       { width: 384, height: 216 },
     ],
+  },
+  "tm-blogs": {
+    sizes: [
+      { width: 1366, height: 768 },
+      { width: 1080, height: 720 },
+    ],
+    top: 0.5,
+    left: 1,
   },
 };
 
