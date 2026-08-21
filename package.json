@@ -5,7 +5,8 @@
   "license": "ISC",
   "type": "commonjs",
   "scripts": {
-    "build": "node crop-and-resize.js"
+    "build": "node crop-and-resize.js",
+    "compress": "node compress.js"
   },
   "dependencies": {
     "sharp": "^0.34.5"
