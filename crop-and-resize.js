@@ -3,17 +3,128 @@
 const sharp = require("sharp");
 const path = require("path");
 const fs = require("fs").promises;
-const {
-  inputDir,
-  outputDir,
-  includeDimensionsInFileName,
-  formatsEnabled,
-  folderSizePresets,
-  overlayConfig,
-  watermarkConfig,
-  formats,
-  outputConfig,
-} = require("./config");
+
+const inputDir = "./01_input";
+const outputDir = "./02_output";
+const includeDimensionsInFileName = true;
+const formatsEnabled = true;
+
+/*
+folderSizePresets usage:
+
+{
+  "tm-showrooms": {
+    sizes: [
+      { width: 1200, height: 800 },
+      { width: 384, height: 216 },
+    ],
+    top: 0.5,
+    left: 0.5,
+  },
+  category: {
+    width: 1531,
+    height: 1010,
+    watermarkPosition: "top-right",
+    watermarkMarginPercent: { x: 0.05, y: 0.045 },
+    watermarkMaxWidth: 576,
+    watermarkMaxHeight: 576,
+  },
+}
+*/
+const folderSizePresets = {
+  "tm-showrooms": {
+    sizes: [
+      { width: 1200, height: 800 },
+      { width: 1080, height: 608 },
+      { width: 384, height: 216 },
+    ],
+  },
+  "tm-blogs": {
+    sizes: [
+      { width: 1366, height: 768 },
+      { width: 1080, height: 720 },
+    ],
+    top: 0.5,
+    left: 1,
+  },
+};
+
+/*
+overlayConfig usage:
+
+{
+  enabled: true,
+}
+*/
+const overlayConfig = {
+  enabled: false,
+};
+
+/*
+watermarkConfig usage:
+
+{
+  enabled: true,
+  imagePath: "./watermark/Gumax_Logo_SVG_White.svg",
+  presets: [
+    {
+      folder: "DE",
+      imagePath: "./watermark/watermark_DE.svg",
+    },
+  ],
+  position: "bottom-left",
+  opacity: 0.8,
+  marginPercent: { x: 0.05, y: 0.045 },
+  scale: 0.125,
+  fixedSize: false,
+  maxWidth: 512,
+  maxHeight: 512,
+}
+*/
+const watermarkConfig = {
+  enabled: false,
+  imagePath: "./watermark/Gumax_Logo_SVG_White.svg",
+  position: "bottom-left",
+  opacity: 0.8,
+  marginPercent: { x: 0.05, y: 0.045 },
+  scale: 0.125,
+  fixedSize: false,
+};
+
+/*
+formats usage:
+
+[
+  {
+    sizes: [
+      { width: 1200, height: 800 },
+      { width: 384, height: 216 },
+    ],
+    top: 0.5,
+    left: 0.5,
+    blurSigma: 0,
+    blurReferenceSize: { width: 1080, height: 608 },
+    resizeWidth: 3500,
+    resizeHeight: 1750,
+  },
+]
+*/
+const formats = [
+  {
+    sizes: [
+      {
+        width: 1366,
+        height: 768,
+      },
+      {
+        width: 1366,
+        height: 768,
+      },
+    ],
+    top: 0.5,
+    left: 0.5,
+  },
+];
 
 const watermarkAssetCache = new Map();
 const watermarkRenderCache = new Map();
