@@ -159,6 +159,15 @@ test("--dry-run prints one plan line per eligible file and writes nothing", asyn
   assert.match(square, /216x216 at 84,0 of 384x216/);
   assert.match(square, /-> 150x150/);
   assert.ok(square.includes(path.join(outputDir, "Verlichting Ledspots", "ACC-0-0.jpg")));
+
+  // Over a populated output a dry run still plans every file, and reports
+  // the ones a real run would skip as up to date.
+  await run(channableConfig(inputs, outputDir), { logger: silentLogger, limit: 3 });
+  lines.length = 0;
+  const resumed = await run(channableConfig(inputs, outputDir), { logger, dryRun: true });
+  assert.equal(lines.filter((l) => /rule \d+/.test(l)).length, 12);
+  assert.deepEqual(resumed.counts, { saved: 0, skipped: 3, failed: 0, ignored: 1, planned: 9 });
+  assert.equal((await listFiles(outputDir)).length, 3);
 });
 
 test("progress shows n / total, and the summary lists counts plus every ignored and failed path", async (t) => {

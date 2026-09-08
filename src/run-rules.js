@@ -12,13 +12,7 @@ const {
   getExtensionForFormat,
   applyOutputFormat,
 } = require("./pipeline");
-const {
-  matchesOnly,
-  isUpToDate,
-  createWriteBudget,
-  mapConcurrent,
-  createProgress,
-} = require("./run-control");
+const { matchesOnly, isUpToDate, runBatch } = require("./run-control");
 const { buildSummary, printSummary, describeError } = require("./summary");
 
 // Windows paths compare case-insensitively; a mistyped drive-letter case
@@ -130,8 +124,9 @@ function describeWindow(window, srcWidth, srcHeight) {
 /*
   Processes one eligible source and returns its summary entry. Nothing is
   logged here: with several sources in flight, the runner prints one line per
-  finished file instead. Order of checks: rule, skip-existing, plan, dry-run,
-  write budget, write.
+  finished file instead. Order of checks: rule, skip-existing, plan, write
+  budget, write. A dry run plans first so every eligible file gets a plan
+  line, and marks the ones a real run would skip as up to date.
 */
 async function processSource({ source, config, force, dryRun, budget }) {
   const { sourcePath, outputPath, category, format, rule, ruleIndex } = source;
@@ -147,7 +142,8 @@ async function processSource({ source, config, force, dryRun, budget }) {
   if (!rule) return { ...entry, status: "skipped", reason: "no-rule" };
 
   try {
-    if (!force && (await isUpToDate(sourcePath, outputPath))) {
+    const upToDate = !force && (await isUpToDate(sourcePath, outputPath));
+    if (upToDate && !dryRun) {
       return { ...entry, status: "skipped", reason: "up-to-date" };
     }
 
@@ -168,7 +164,11 @@ async function processSource({ source, config, force, dryRun, budget }) {
       plan: `rule ${ruleIndex + 1}: ${describeWindow(window, srcWidth, srcHeight)}`,
     };
 
-    if (dryRun) return { ...planned, status: "planned" };
+    if (dryRun) {
+      return upToDate
+        ? { ...planned, status: "skipped", reason: "up-to-date" }
+        : { ...planned, status: "planned" };
+    }
     if (!budget.claim()) return { ...planned, status: "skipped", reason: "limit" };
 
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
@@ -197,7 +197,9 @@ function describeEntry(entry) {
     case "planned":
       return `plan    ${entry.sourcePath}: ${entry.plan}, ${entry.outputPath}`;
     case "skipped":
-      return `skipped ${entry.sourcePath} (${entry.reason})`;
+      return entry.plan
+        ? `skip    ${entry.sourcePath}: ${entry.plan}, ${entry.outputPath} (${entry.reason})`
+        : `skipped ${entry.sourcePath} (${entry.reason})`;
     default:
       return `FAILED  ${entry.sourcePath}: ${describeError(entry.error)}`;
   }
@@ -205,7 +207,7 @@ function describeEntry(entry) {
 
 // Rule-mode counterpart of run(): `config` and `options` are already normalised.
 async function runRules(config, options) {
-  const { logger, concurrency, force, limit, only, dryRun } = options;
+  const { logger, force, only, dryRun } = options;
   warnShadowedRules(config.rules, logger);
   assertOutputOutsideInputs(config.outputDir, config.inputs);
 
@@ -216,24 +218,12 @@ async function runRules(config, options) {
     `Found ${sources.length} eligible image(s) across ${inputs.length} input(s); ignoring ${ignored.length} file(s)${dryRun ? " (dry run, nothing will be written)" : ""}`,
   );
 
-  const budget = createWriteBudget(limit);
-  const progress = createProgress(sources.length, logger);
-  const results = await mapConcurrent(
+  const outputs = await runBatch(
     sources,
-    concurrency,
-    async (source) => {
-      const entry = await processSource({ source, config, force, dryRun, budget });
-      progress.tick(describeEntry(entry));
-      return entry;
-    },
-    { shouldStop: () => budget.exhausted() },
+    options,
+    (source, budget) => processSource({ source, config, force, dryRun, budget }),
+    describeEntry,
   );
-  const outputs = results.filter((entry) => entry !== undefined);
-  if (outputs.length < sources.length) {
-    logger.log(
-      `Limit of ${limit} written file(s) reached; ${sources.length - outputs.length} source(s) not processed.`,
-    );
-  }
 
   const summary = buildSummary({
     mode: "rules",

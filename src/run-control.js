@@ -10,8 +10,8 @@ function isPositiveInteger(value) {
 
 /*
   Run options shared by both modes. Anything not given falls back to the
-  defaults from the PRD: four images in flight, skip-existing on, no limit,
-  no filter, real writes, no report.
+  defaults: four images in flight, skip-existing on, no limit, no filter,
+  real writes, no report.
 */
 function normalizeRunOptions(options = {}) {
   const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
@@ -49,16 +49,15 @@ function matchesOnly(only, ...candidates) {
 }
 
 // Skip-existing: an output is current when it exists and is not older than
-// its source. Any stat failure on the output means "not current".
+// its source. A stat failure on either side means "not current"; a missing
+// source then fails later, when it is opened, with the real error.
 async function isUpToDate(sourcePath, outputPath) {
-  let out;
   try {
-    out = await fs.stat(outputPath);
+    const [out, src] = await Promise.all([fs.stat(outputPath), fs.stat(sourcePath)]);
+    return out.mtimeMs >= src.mtimeMs;
   } catch {
     return false;
   }
-  const src = await fs.stat(sourcePath);
-  return out.mtimeMs >= src.mtimeMs;
 }
 
 /*
@@ -113,8 +112,38 @@ function createProgress(total, logger) {
   };
 }
 
+/*
+  The loop both modes share: process `items` with `concurrency` in flight,
+  print one progress line per finished item, and stop starting new items
+  once the write budget for --limit is spent. `worker(item, budget)` returns
+  the item's result; `describe(result)` renders its progress line. Returns
+  the results of the items that were started, in item order.
+*/
+async function runBatch(items, { concurrency, limit, logger }, worker, describe) {
+  const budget = createWriteBudget(limit);
+  const progress = createProgress(items.length, logger);
+  const results = await mapConcurrent(
+    items,
+    concurrency,
+    async (item) => {
+      const result = await worker(item, budget);
+      progress.tick(describe(result));
+      return result;
+    },
+    { shouldStop: () => budget.exhausted() },
+  );
+  const started = results.filter((result) => result !== undefined);
+  if (started.length < items.length) {
+    logger.log(
+      `Limit of ${limit} written file(s) reached; ${items.length - started.length} source(s) not processed.`,
+    );
+  }
+  return started;
+}
+
 module.exports = {
   DEFAULT_CONCURRENCY,
+  runBatch,
   normalizeRunOptions,
   matchesOnly,
   isUpToDate,

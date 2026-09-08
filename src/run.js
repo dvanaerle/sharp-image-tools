@@ -29,9 +29,7 @@ const {
   normalizeRunOptions,
   matchesOnly,
   isUpToDate,
-  createWriteBudget,
-  mapConcurrent,
-  createProgress,
+  runBatch,
 } = require("./run-control");
 const { buildSummary, printSummary, writeReport } = require("./summary");
 
@@ -399,7 +397,7 @@ function describeImage(relativePath, entries) {
 // filters on the path relative to inputDir. Non-image files are reported as
 // ignored, never opened.
 async function runPresets(config, options) {
-  const { logger, concurrency, force, limit, only, dryRun } = options;
+  const { logger, force, only, dryRun } = options;
   const renderer = createWatermarkRenderer();
 
   const allFiles = await getAllFiles(config.inputDir);
@@ -418,32 +416,13 @@ async function runPresets(config, options) {
     `Found ${imageFiles.length} image(s) to process; ignoring ${ignored.length} file(s)${dryRun ? " (dry run, nothing will be written)" : ""}`,
   );
 
-  const budget = createWriteBudget(limit);
-  const progress = createProgress(imageFiles.length, logger);
-  const results = await mapConcurrent(
+  const processed = await runBatch(
     imageFiles,
-    concurrency,
-    async (imageFile) => {
-      const entries = await processImage({
-        config,
-        imageFile,
-        renderer,
-        logger,
-        force,
-        dryRun,
-        budget,
-      });
-      progress.tick(describeImage(path.relative(config.inputDir, imageFile), entries));
-      return entries;
-    },
-    { shouldStop: () => budget.exhausted() },
+    options,
+    (imageFile, budget) =>
+      processImage({ config, imageFile, renderer, logger, force, dryRun, budget }),
+    (entries) => describeImage(path.relative(config.inputDir, entries[0].sourcePath), entries),
   );
-  const processed = results.filter((entries) => entries !== undefined);
-  if (processed.length < imageFiles.length) {
-    logger.log(
-      `Limit of ${limit} written file(s) reached; ${imageFiles.length - processed.length} image(s) not processed.`,
-    );
-  }
 
   const summary = buildSummary({
     mode: "presets",
