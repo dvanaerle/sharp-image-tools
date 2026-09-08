@@ -8,7 +8,7 @@
 
 - [x] README documents `npm run build:channable`, `--config`, `--concurrency`, `--limit`, `--only`, `--dry-run`, `--force`, `--report`, the input-entry model and the rule model.
 - [x] `--only Ledspots --dry-run` prints 12 plan lines and writes nothing.
-- [x] `--only Ledspots` writes 12 files under the Verlichting category folder; `-1` to `-6` files are 1500x844 JPEG.
+- [x] `--only Ledspots` writes 12 files under the category folder (`Ledspots`, the label in `configs/channable.js`; the ticket originally said Verlichting); `-1` to `-6` files are 1500x844 JPEG.
 - [x] One full category (Terrasoverkappingen or Carport) completes with the summary reporting zero failures; a spot check confirms `-0` files are 1500x1500 and other files are at most 1500 wide.
 - [x] A before/after listing (names, sizes, mtimes) of the processed `Origineel` folders is identical, confirming nothing on V: was created, modified or removed.
 - [x] Ignored files listed by the summary match the expected non-SKU set (energy labels, detail photos, loose renders, Thumbs.db, PSD).
@@ -29,5 +29,5 @@
 
 **To know.**
 - Ledspots has no `-0` file: the two SKUs (ACC-1104-1, ACC-1106-1) ship `-1` to `-6` only. The category label in `configs/channable.js` is `Ledspots`, so the output folder is `google-channable-export/Ledspots/`, not a `Verlichting` folder.
-- The two folders run so far only contain `Thumbs.db` as non-SKU files; energy labels, detail photos, loose renders and PSDs were not present here and are covered by tests, not by this run. The full `npm run build:channable` will surface them in the summary.
+- The two folders written so far only contain `Thumbs.db` as non-SKU files. To cover the rest of the expected ignore set, three further categories were dry-run (read-only, nothing written): Zonwering (180 planned, 7 ignored: three `*-detailfoto.jpg`, three `*-onderaanzicht.jpg`, `Thumbs.db`), Lighting System (480 planned, 8 ignored: four `*-energielabel.jpg`, three `*-product.jpg`, `Thumbs.db`) and Bamboo decking (23 planned, 10 ignored: two `.psd`, four `Render_Bamboo_*.jpg` loose renders, `Bamboo decking - *.jpg/.png` diagrams, `Thumbs.db`). Every ignored file is a non-SKU name; every SKU-prefixed image was planned. `3m.jpg` was not present in any of these folders.
 - Throughput on the share was about 90 files a minute at concurrency 4; the full 16,000-file batch should take roughly three hours. It resumes on rerun.

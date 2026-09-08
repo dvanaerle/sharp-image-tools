@@ -26,7 +26,7 @@ npm run build
 - `.png`
 - `.webp`
 
-## Output Behavior
+## Output Behavior (root config)
 
 - Exports optimized PNG for `.png` inputs.
 - Exports JPEG for non-PNG inputs (`.jpg`, `.jpeg`, `.webp`).
@@ -72,7 +72,7 @@ Every run, in either mode, accepts these flags (`--flag value` or
 | --- | --- | --- |
 | `--concurrency N` | `4` | Images processed in parallel. Output is identical to a sequential run. |
 | `--force` | off | Rewrite outputs that are already up to date. Without it an output is skipped when it exists and is not older than its source, so an interrupted run can simply be started again. |
-| `--limit N` | none | Stop after N files have been written. Skipped files do not count, so repeated limited runs walk through the batch. |
+| `--limit N` | none | Stop after N files have been written. Skipped files do not count, so repeated limited runs walk through the batch. Has no effect under `--dry-run`. |
 | `--only <text>` | none | Only process input entries whose path or category contains `<text>` (case-insensitive). With the root config it filters on the image path relative to `inputDir`. |
 | `--dry-run` | off | Print the plan per file (rule, crop window, output size, output path) and write nothing. Files a real run would skip are shown as up to date. |
 | `--report <path>` | none | Write a per-file CSV: source, output, rule, source size, output size, status. No report is produced without the flag. |
