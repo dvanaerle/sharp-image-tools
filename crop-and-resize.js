@@ -3,128 +3,19 @@
 const sharp = require("sharp");
 const path = require("path");
 const fs = require("fs").promises;
-
-const inputDir = "./01_input";
-const outputDir = "./02_output";
-const includeDimensionsInFileName = true;
-const formatsEnabled = true;
-
-/*
-folderSizePresets usage:
-
-{
-  "tm-showrooms": {
-    sizes: [
-      { width: 1200, height: 800 },
-      { width: 384, height: 216 },
-    ],
-    top: 0.5,
-    left: 0.5,
-  },
-  category: {
-    width: 1531,
-    height: 1010,
-    watermarkPosition: "top-right",
-    watermarkMarginPercent: { x: 0.05, y: 0.045 },
-    watermarkMaxWidth: 576,
-    watermarkMaxHeight: 576,
-  },
-}
-*/
-const folderSizePresets = {
-  "tm-showrooms": {
-    sizes: [
-      { width: 1200, height: 800 },
-      { width: 1080, height: 608 },
-      { width: 384, height: 216 },
-    ],
-  },
-  "tm-blogs": {
-    sizes: [
-      { width: 1366, height: 768 },
-      { width: 1080, height: 720 },
-    ],
-    top: 0.5,
-    left: 1,
-  },
-};
-
-/*
-overlayConfig usage:
-
-{
-  enabled: true,
-}
-*/
-const overlayConfig = {
-  enabled: false,
-};
-
-/*
-watermarkConfig usage:
-
-{
-  enabled: true,
-  imagePath: "./watermark/Gumax_Logo_SVG_White.svg",
-  presets: [
-    {
-      folder: "DE",
-      imagePath: "./watermark/watermark_DE.svg",
-    },
-  ],
-  position: "bottom-left",
-  opacity: 0.8,
-  marginPercent: { x: 0.05, y: 0.045 },
-  scale: 0.125,
-  fixedSize: false,
-  maxWidth: 512,
-  maxHeight: 512,
-}
-*/
-const watermarkConfig = {
-  enabled: false,
-  imagePath: "./watermark/Gumax_Logo_SVG_White.svg",
-  position: "bottom-left",
-  opacity: 0.8,
-  marginPercent: { x: 0.05, y: 0.045 },
-  scale: 0.125,
-  fixedSize: false,
-};
-
-/*
-formats usage:
-
-[
-  {
-    sizes: [
-      { width: 1200, height: 800 },
-      { width: 384, height: 216 },
-    ],
-    top: 0.5,
-    left: 0.5,
-    blurSigma: 0,
-    blurReferenceSize: { width: 1080, height: 608 },
-    resizeWidth: 3500,
-    resizeHeight: 1750,
-  },
-]
-*/
-const formats = [
-  {
-    sizes: [
-      {
-        width: 1366,
-        height: 768,
-      },
-      {
-        width: 1366,
-        height: 768,
-      },
-    ],
-    top: 0.5,
-    left: 0.5,
-  },
-];
+const {
+  inputDir,
+  outputDir,
+  includeDimensionsInFileName,
+  namingConfig,
+  imagePositionOverrides,
+  formatsEnabled,
+  folderSizePresets,
+  overlayConfig,
+  watermarkConfig,
+  formats,
+  outputConfig,
+} = require("./config");
 
 const watermarkAssetCache = new Map();
 const watermarkRenderCache = new Map();
@@ -578,6 +469,56 @@ function getOutputFormatForSource(filePath, forcedFormat) {
   return path.extname(filePath).toLowerCase() === ".png" ? "png" : "jpeg";
 }
 
+/*
+  Output filename normalisation (CMS asset convention).
+
+  Only the generated filename changes — source files are never renamed.
+  Order: `rename` override → slugify → brand prefix.
+
+  - rename: exact source basename → replacement, for legacy/Dutch names
+    that need a semantic English one ("Homepage-afbeeldingen9" → "about-us")
+  - slugify: strip accents, ASCII only, lowercase kebab-case
+  - brandPrefix: prepended unless already present or listed in `noPrefix`
+*/
+const TRANSLITERATIONS = {
+  ß: "ss",
+  æ: "ae",
+  œ: "oe",
+  ø: "o",
+  đ: "d",
+  ł: "l",
+  "€": "eur",
+  "&": "-and-",
+};
+
+function slugifyBaseName(name) {
+  return String(name)
+    .replace(
+      /[ßæœøđł€&]/g,
+      (character) => TRANSLITERATIONS[character] ?? character,
+    )
+    .normalize("NFD")
+    // Drop the combining accents NFD just split off (é → e).
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function normalizeBaseName(baseName, naming) {
+  if (!naming || naming.enabled !== true) return baseName;
+
+  const renamed = naming.rename?.[baseName] ?? baseName;
+  const slug = naming.slugify === false ? renamed : slugifyBaseName(renamed);
+  if (!slug) return baseName;
+
+  const prefix = naming.brandPrefix;
+  const exempt = (naming.noPrefix ?? []).includes(slug);
+  if (!prefix || exempt || slug.startsWith(prefix)) return slug;
+  return `${prefix}${slug}`;
+}
+
 function getOutputFileName({
   baseName,
   width,
@@ -587,10 +528,16 @@ function getOutputFileName({
   outputFormat,
 }) {
   const extension = outputFormat === "png" ? "png" : "jpg";
+  baseName = normalizeBaseName(baseName, namingConfig);
   if (suffix) {
     // `@2x` joins without a hyphen → `hero@2x.jpg`; other suffixes use `-`.
     const joiner = String(suffix).startsWith("@") ? "" : "-";
     return `${baseName}${joiner}${suffix}.${extension}`;
+  }
+  // `suffix: false` means "bare basename" — needed when a multi-size preset
+  // has one variant that must keep the plain name (no @Nx, no dimensions).
+  if (suffix === false) {
+    return `${baseName}.${extension}`;
   }
   if (!includeDimensions) {
     return `${baseName}.${extension}`;
@@ -748,6 +695,13 @@ async function processImages() {
 
       console.log(`  Oriented size: ${srcWidth}x${srcHeight}`);
 
+      const positionOverride = imagePositionOverrides?.[baseName];
+      if (positionOverride) {
+        console.log(
+          `  Position override: top=${positionOverride.top ?? "-"} left=${positionOverride.left ?? "-"}`,
+        );
+      }
+
       const { folderPresetKey, formats: activeFormats } =
         getActiveFormatsForDirectory({
           dirSegmentsLower,
@@ -763,7 +717,9 @@ async function processImages() {
       );
 
       let watermarkAsset = null;
-      if (watermarkConfig.enabled) {
+      // A preset can opt out entirely, even while watermarkConfig.enabled
+      // is on for the rest of the batch.
+      if (watermarkConfig.enabled && !folderPreset?.noWatermark) {
         const watermarkPath = getWatermarkPathForImage(dirSegments);
         if (watermarkPath) {
           try {
@@ -788,20 +744,54 @@ async function processImages() {
         canvas,
       } of activeFormats) {
         const expandedSizes = sizes.flatMap(expandSizeByScales);
+        // Only unsuffixed sizes can collide on name; a suffix already
+        // separates them, so those never need dimensions appended.
+        const unsuffixedCount = expandedSizes.filter((s) => !s.suffix).length;
         for (const size of expandedSizes) {
           const {
-            width,
-            height,
+            width: requestedWidth,
+            height: requestedHeight,
             resizeWidth: sizeResizeWidth,
             resizeHeight: sizeResizeHeight,
             top: sizeTop,
             left: sizeLeft,
             suffix: sizeSuffix,
           } = size;
+
+          // Never upscale. When the source cannot fill the requested box,
+          // fall back to the largest box that fits inside it AT THE
+          // SOURCE'S OWN ratio — so the ratio is adjusted instead of the
+          // image being enlarged or cropped to a shape it cannot fill.
+          // scale === 1 means the source is smaller in both axes, so it
+          // passes through at native size with no crop at all.
+          const noUpscale =
+            size.noUpscale ?? folderPreset?.noUpscale ?? false;
+          let width = requestedWidth;
+          let height = requestedHeight;
+          if (
+            noUpscale &&
+            isPositiveNumber(requestedWidth) &&
+            isPositiveNumber(requestedHeight) &&
+            (srcWidth < requestedWidth || srcHeight < requestedHeight)
+          ) {
+            const scale = Math.min(
+              requestedWidth / srcWidth,
+              requestedHeight / srcHeight,
+              1,
+            );
+            width = Math.max(1, Math.round(srcWidth * scale));
+            height = Math.max(1, Math.round(srcHeight * scale));
+            console.log(
+              `  No upscale: ${requestedWidth}x${requestedHeight} -> ${width}x${height} (source ${srcWidth}x${srcHeight}, ratio kept at ${(srcWidth / srcHeight).toFixed(3)})`,
+            );
+          }
           const effectiveResizeWidth = sizeResizeWidth ?? resizeWidth;
           const effectiveResizeHeight = sizeResizeHeight ?? resizeHeight;
-          const effectiveTop = sizeTop ?? top ?? 0.5;
-          const effectiveLeft = sizeLeft ?? left ?? 0.5;
+          // A per-file override beats both the size entry and the preset.
+          const effectiveTop =
+            positionOverride?.top ?? sizeTop ?? top ?? 0.5;
+          const effectiveLeft =
+            positionOverride?.left ?? sizeLeft ?? left ?? 0.5;
 
           const canvasPlan = canvas
             ? createCanvasPlan({
@@ -851,7 +841,7 @@ async function processImages() {
             width,
             height,
             includeDimensions:
-              includeDimensionsInFileName || expandedSizes.length > 1,
+              includeDimensionsInFileName || unsuffixedCount > 1,
             suffix: sizeSuffix,
             outputFormat,
           });
