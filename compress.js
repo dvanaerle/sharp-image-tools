@@ -72,7 +72,6 @@ async function compressFolder(productDir) {
 // Processes every product folder under `rootDir` (defaults to the configured
 // root). Pass a different root to run against another tree, e.g. for testing.
 async function compressAll(rootDir = compressConfig.rootDir) {
-
   // If rootDir is itself a product folder (contains a source folder), process
   // just that one. Otherwise treat its children as product folders.
   if (await findSourceDir(rootDir)) {
