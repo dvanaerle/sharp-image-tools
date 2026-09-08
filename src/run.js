@@ -24,6 +24,7 @@ const {
   getOutputFormatForSource,
   applyOutputFormat,
 } = require("./pipeline");
+const { runRules } = require("./run-rules");
 
 // Processes one source image; returns one summary entry per output variant.
 async function processImage({ config, imageFile, renderer, logger }) {
@@ -367,17 +368,22 @@ function countStatuses(outputs) {
 /*
   Programmatic entrypoint.
 
-  `rawConfig` has the shape of the root config module; relative paths in it
-  resolve against the process working directory, as before. All progress
-  output goes to `options.logger` (defaults to console).
+  `rawConfig` is either the root-config shape (inputDir + folder presets) or
+  a rule-based config (inputs + rules, see configs/channable.js). Relative
+  paths resolve against the process working directory, as before. All
+  progress output goes to `options.logger` (defaults to console).
 
   Resolves to { inputDir, outputDir, sourceCount, outputs, counts }. Each
   entry in `outputs` has a `status` of "saved", "skipped" or "failed", and
-  `counts` tallies those statuses.
+  `counts` tallies those statuses. Rule mode returns `inputs` instead of
+  `inputDir`, plus `ignored` (files never opened) and `counts.ignored`.
 */
 async function run(rawConfig, options = {}) {
   const config = normalizeConfig(rawConfig);
   const logger = options.logger ?? console;
+  if (config.mode === "rules") {
+    return runRules(config, { logger });
+  }
   const renderer = createWatermarkRenderer();
 
   const imageFiles = await getImageFiles(config.inputDir);

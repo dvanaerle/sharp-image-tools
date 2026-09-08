@@ -6,6 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "build": "node crop-and-resize.js",
+    "build:channable": "node crop-and-resize.js --config configs/channable.js",
     "compress": "node compress.js",
     "test": "node --test"
   },
