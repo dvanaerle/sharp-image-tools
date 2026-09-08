@@ -2,43 +2,19 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const os = require("node:os");
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const sharp = require("sharp");
 const { run } = require("../src/run");
-
-const silentLogger = { log() {}, warn() {}, error() {} };
-
-async function makeTempDir(t) {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "sharp-image-tools-"));
-  t.after(() => fs.rm(dir, { recursive: true, force: true }));
-  return dir;
-}
-
-async function writeImage(filePath, width, height, format, background) {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  const image = sharp({
-    create: { width, height, channels: 3, background },
-  });
-  await (format === "png" ? image.png() : image.jpeg()).toFile(filePath);
-}
-
-async function listFiles(dir, prefix = "") {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-  const out = [];
-  for (const entry of entries) {
-    const rel = path.posix.join(prefix, entry.name);
-    if (entry.isDirectory()) {
-      out.push(...(await listFiles(path.join(dir, entry.name), rel)));
-    } else {
-      out.push(rel);
-    }
-  }
-  return out.sort();
-}
-
-const red = { r: 200, g: 40, b: 40 };
+const {
+  silentLogger,
+  red,
+  blue,
+  makeTempDir,
+  writeImage,
+  listFiles,
+  pixelAt: cornerPixel,
+} = require("./helpers");
 
 test("a jpeg in a preset folder is cropped to the preset size and kept as jpeg", async (t) => {
   const root = await makeTempDir(t);
@@ -64,17 +40,6 @@ test("a jpeg in a preset folder is cropped to the preset size and kept as jpeg",
   assert.equal(summary.sourceCount, 1);
   assert.deepEqual(summary.counts, { saved: 1, skipped: 0, failed: 0 });
 });
-
-const blue = { r: 0, g: 0, b: 255 };
-
-async function cornerPixel(filePath, left, top) {
-  const { data } = await sharp(filePath)
-    .extract({ left, top, width: 1, height: 1 })
-    .removeAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  return { r: data[0], g: data[1], b: data[2] };
-}
 
 test("a locale preset badge is composited bottom-right; a noWatermark preset opts out", async (t) => {
   const root = await makeTempDir(t);

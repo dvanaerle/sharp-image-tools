@@ -7,7 +7,11 @@ const { getAllFiles } = require("./discover");
 const { matchRule, findShadowedRules, isEligibleFile } = require("./rules");
 const { createCropWindow } = require("./crop-window");
 const { getOrientedDimensions, isPositiveNumber } = require("./crop-plan");
-const { getOutputFormatForSource, applyOutputFormat } = require("./pipeline");
+const {
+  getOutputFormatForSource,
+  getExtensionForFormat,
+  applyOutputFormat,
+} = require("./pipeline");
 
 // Windows paths compare case-insensitively; a mistyped drive-letter case
 // must not slip past the read-only guard.
@@ -18,7 +22,11 @@ function comparablePath(p) {
 
 function isInsideOrEqual(child, parent) {
   const rel = path.relative(parent, child);
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  if (rel === "") return true;
+  if (path.isAbsolute(rel)) return false;
+  // Compare the first segment, so a sibling named "..export" is not mistaken
+  // for a parent walk.
+  return rel.split(path.sep)[0] !== "..";
 }
 
 // Inputs are read-only: refuse to run when the output root is one of them
@@ -43,9 +51,9 @@ function warnShadowedRules(rules, logger) {
 }
 
 // Walks every input and splits its files into eligible sources (with their
-// output path) and ignored files. Nothing is opened here.
+// rule and output path) and ignored files. Nothing is opened here.
 async function planInputs(config) {
-  const { inputs, outputDir, skuPrefixes } = config;
+  const { inputs, outputDir, skuPrefixes, rules } = config;
   const sources = [];
   const ignored = [];
   for (const { path: inputPath, category } of inputs) {
@@ -59,9 +67,18 @@ async function planInputs(config) {
       const outputPath = path.join(
         outputDir,
         category,
-        `${baseName}.${format === "png" ? "png" : "jpg"}`,
+        `${baseName}.${getExtensionForFormat(format)}`,
       );
-      sources.push({ sourcePath: file, category, baseName, format, outputPath });
+      const rule = matchRule(rules, baseName);
+      sources.push({
+        sourcePath: file,
+        category,
+        baseName,
+        format,
+        outputPath,
+        rule,
+        ruleIndex: rule ? rules.indexOf(rule) : -1,
+      });
     }
   }
   return { sources, ignored };
@@ -88,9 +105,14 @@ function assertNoCollisions(sources) {
 }
 
 async function processSource({ source, config, logger }) {
-  const { sourcePath, outputPath, baseName, category, format } = source;
-  const entry = { sourcePath, outputPath, category, format };
+  const { sourcePath, outputPath, category, format, rule, ruleIndex } = source;
+  const entry = { sourcePath, outputPath, category, format, ruleIndex };
   logger.log(`\nProcessing: ${sourcePath}`);
+
+  if (!rule) {
+    logger.warn("  Skipping: no rule matches.");
+    return { ...entry, status: "skipped", reason: "no-rule" };
+  }
 
   try {
     const metadata = await sharp(sourcePath).metadata();
@@ -101,12 +123,6 @@ async function processSource({ source, config, logger }) {
       return { ...entry, status: "skipped", reason: "no-dimensions" };
     }
 
-    const rule = matchRule(config.rules, baseName);
-    if (!rule) {
-      logger.warn("  Skipping: no rule matches.");
-      return { ...entry, status: "skipped", reason: "no-rule" };
-    }
-    const ruleIndex = config.rules.indexOf(rule);
     const window = createCropWindow({ srcWidth, srcHeight, rule });
     logger.log(
       `  Rule ${ruleIndex + 1}: window ${window.width}x${window.height} at ${window.left},${window.top} of ${srcWidth}x${srcHeight} -> ${window.outputWidth}x${window.outputHeight}`,
@@ -128,7 +144,6 @@ async function processSource({ source, config, logger }) {
     logger.log(`  Saved: ${outputPath}`);
     return {
       ...entry,
-      ruleIndex,
       width: window.outputWidth,
       height: window.outputHeight,
       status: "saved",

@@ -7,20 +7,9 @@ const IMAGE_RE = /\.(jpe?g|png|webp)$/i;
 
 // Recursively lists every image file under `dir`.
 async function getImageFiles(dir) {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-  const files = await Promise.all(
-    entries.map(async (entry) => {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        return getImageFiles(fullPath);
-      }
-      if (entry.isFile() && IMAGE_RE.test(entry.name)) {
-        return fullPath;
-      }
-      return [];
-    }),
+  return (await getAllFiles(dir)).filter((file) =>
+    IMAGE_RE.test(path.basename(file)),
   );
-  return files.flat();
 }
 
 // Recursively lists every file under `dir`, images or not, so callers can

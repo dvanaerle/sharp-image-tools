@@ -1,5 +1,7 @@
 "use strict";
 
+const { getExtensionForFormat } = require("./pipeline");
+
 /*
   Output filename normalisation (CMS asset convention).
 
@@ -60,7 +62,7 @@ function getOutputFileName({
   outputFormat,
   naming,
 }) {
-  const extension = outputFormat === "png" ? "png" : "jpg";
+  const extension = getExtensionForFormat(outputFormat);
   const name = normalizeBaseName(baseName, naming);
   if (suffix) {
     // `@2x` joins without a hyphen → `hero@2x.jpg`; other suffixes use `-`.

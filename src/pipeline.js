@@ -32,6 +32,12 @@ function getOutputFormatForSource(filePath, forcedFormat) {
   return path.extname(filePath).toLowerCase() === ".png" ? "png" : "jpeg";
 }
 
+// webp sources are encoded as JPEG (webp output is out of scope), so they
+// take the .jpg extension too.
+function getExtensionForFormat(outputFormat) {
+  return outputFormat === "png" ? "png" : "jpg";
+}
+
 // Encodes the pipeline as PNG (palette mode) or JPEG (mozjpeg) using the
 // quality settings in `outputConfig`.
 function applyOutputFormat(pipeline, outputFormat, outputConfig) {
@@ -52,4 +58,9 @@ function applyOutputFormat(pipeline, outputFormat, outputConfig) {
     .jpeg({ mozjpeg: true, quality: outputConfig.jpegQuality });
 }
 
-module.exports = { getOverlayBuffer, getOutputFormatForSource, applyOutputFormat };
+module.exports = {
+  getOverlayBuffer,
+  getOutputFormatForSource,
+  getExtensionForFormat,
+  applyOutputFormat,
+};

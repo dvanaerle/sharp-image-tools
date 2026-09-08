@@ -2,38 +2,11 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const os = require("node:os");
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const sharp = require("sharp");
 const { run } = require("../src/run");
-
-const silentLogger = { log() {}, warn() {}, error() {} };
-
-async function makeTempDir(t) {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "sharp-image-tools-"));
-  t.after(() => fs.rm(dir, { recursive: true, force: true }));
-  return dir;
-}
-
-const red = { r: 200, g: 40, b: 40 };
-
-async function writeImage(filePath, width, height, format = "jpeg") {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  const image = sharp({ create: { width, height, channels: 3, background: red } });
-  await (format === "png" ? image.png() : image.jpeg()).toFile(filePath);
-}
-
-async function listFiles(dir, prefix = "") {
-  const entries = await fs.readdir(dir, { withFileTypes: true });
-  const out = [];
-  for (const entry of entries) {
-    const rel = path.posix.join(prefix, entry.name);
-    if (entry.isDirectory()) out.push(...(await listFiles(path.join(dir, entry.name), rel)));
-    else out.push(rel);
-  }
-  return out.sort();
-}
+const { silentLogger, makeTempDir, writeImage, listFiles, pixelAt } = require("./helpers");
 
 async function size(filePath) {
   const meta = await sharp(filePath).metadata();
@@ -170,11 +143,8 @@ test("watermark, overlay and naming from a root-style config are not applied in 
   // Naming off: exact basename kept (no slug, no prefix, no dimensions).
   assert.deepEqual(await listFiles(outputDir), ["c/BUN-Een_Twee-0.jpg"]);
   // Overlay and watermark off: bottom-right pixel is still plain red.
-  const { data } = await sharp(path.join(outputDir, "c", "BUN-Een_Twee-0.jpg"))
-    .extract({ left: 145, top: 145, width: 1, height: 1 })
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  assert.ok(data[0] > 150 && data[2] < 100, `expected plain red pixel, got ${[...data]}`);
+  const pixel = await pixelAt(path.join(outputDir, "c", "BUN-Een_Twee-0.jpg"), 145, 145);
+  assert.ok(pixel.r > 150 && pixel.b < 100, `expected plain red pixel, got ${JSON.stringify(pixel)}`);
   assert.equal(summary.counts.saved, 1);
 });
 

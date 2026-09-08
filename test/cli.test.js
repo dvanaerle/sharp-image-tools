@@ -25,8 +25,9 @@ test("--config <path> selects a config file relative to the working directory", 
   );
 });
 
-test("--config without a value is rejected", () => {
+test("--config without a value, and unknown flags, are rejected", () => {
   assert.throws(() => parseArgs(["--config"]), /--config requires a path/);
+  assert.throws(() => parseArgs(["--confg", "x.js"]), /Unknown argument: --confg/);
 });
 
 test("the shipped Channable config is a valid rule config", () => {

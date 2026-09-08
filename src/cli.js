@@ -2,8 +2,8 @@
 
 const path = require("path");
 
-// Parses `--config <path>` / `--config=<path>`. Anything else is left alone
-// so later tickets can add their own flags.
+// Parses `--config <path>` / `--config=<path>`. Any other flag is an error:
+// a mistyped flag must not silently run the root config against real folders.
 function parseArgs(argv) {
   let configPath = null;
   for (let i = 0; i < argv.length; i += 1) {
@@ -18,6 +18,8 @@ function parseArgs(argv) {
     } else if (arg.startsWith("--config=")) {
       configPath = arg.slice("--config=".length);
       if (!configPath) throw new Error("--config requires a path");
+    } else {
+      throw new Error(`Unknown argument: ${arg}`);
     }
   }
   return { configPath };
