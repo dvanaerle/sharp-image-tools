@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "build": "node crop-and-resize.js",
-    "compress": "node compress.js"
+    "compress": "node compress.js",
+    "test": "node --test"
   },
   "dependencies": {
     "sharp": "^0.34.5"

@@ -4,12 +4,16 @@
 
 **Blocked by:** 01 (Housekeeping and compress.js fix).
 
-**Status:** ready-for-agent
+**Status:** claimed
 
-- [ ] `npm run build` on the current `01_input` layout produces the same files with the same dimensions and names as before the refactor (verified by a before/after listing on at least one preset folder).
-- [ ] `run(config, options)` exists, takes a config object rather than reading the root config itself, and returns a summary with per-status counts.
-- [ ] Root `crop-and-resize.js` and `compress.js` are thin entrypoints; no processing logic remains in them.
-- [ ] `npm test` runs `node --test` and passes; no new dependency added.
-- [ ] An end-to-end test creates fixture images in a temp directory, runs `run()` against them with a folder preset, and asserts output existence, dimensions and format.
-- [ ] Unit tests cover the resize-crop plan, output filename, scale expansion and watermark placement helpers.
-- [ ] CommonJS is retained; `sharp` is still the only runtime dependency.
+- [x] `npm run build` on the current `01_input` layout produces the same files with the same dimensions and names as before the refactor (verified by a before/after listing on at least one preset folder).
+- [x] `run(config, options)` exists, takes a config object rather than reading the root config itself, and returns a summary with per-status counts.
+- [x] Root `crop-and-resize.js` and `compress.js` are thin entrypoints; no processing logic remains in them.
+- [x] `npm test` runs `node --test` and passes; no new dependency added.
+- [x] An end-to-end test creates fixture images in a temp directory, runs `run()` against them with a folder preset, and asserts output existence, dimensions and format.
+- [x] Unit tests cover the resize-crop plan, output filename, scale expansion and watermark placement helpers.
+- [x] CommonJS is retained; `sharp` is still the only runtime dependency.
+
+## Comments
+
+**2026-09-08, implementation notes.** Modules: `src/config.js` (defaults), `src/discover.js` (input walk), `src/crop-plan.js` (cover/crop, canvas, scales, preset lookup), `src/watermark.js` (placement maths, locale lookup, asset renderer), `src/naming.js` (slug/prefix/filename), `src/pipeline.js` (overlay, output format), `src/run.js` (`run(config, options)`), `src/compress.js`. Before/after verified on the full `01_input` tree (111 sources, 212 outputs): names, dimensions, formats and byte sizes identical. `run()` summary shape: `{ inputDir, outputDir, sourceCount, outputs[], counts: { saved, skipped, failed } }`. Tests: `test/*.test.js`, 15 passing under `node --test`.
