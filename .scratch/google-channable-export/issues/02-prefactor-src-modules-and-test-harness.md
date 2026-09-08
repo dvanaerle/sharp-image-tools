@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 (Housekeeping and compress.js fix).
 
-**Status:** claimed
+**Status:** resolved — 2026-09-08, commit 0a52eb6 on main. Shipped as specified; see Comments for the module map and review notes.
 
 - [x] `npm run build` on the current `01_input` layout produces the same files with the same dimensions and names as before the refactor (verified by a before/after listing on at least one preset folder).
 - [x] `run(config, options)` exists, takes a config object rather than reading the root config itself, and returns a summary with per-status counts.
@@ -17,3 +17,5 @@
 ## Comments
 
 **2026-09-08, implementation notes.** Modules: `src/config.js` (defaults), `src/discover.js` (input walk), `src/crop-plan.js` (cover/crop, canvas, scales, preset lookup), `src/watermark.js` (placement maths, locale lookup, asset renderer), `src/naming.js` (slug/prefix/filename), `src/pipeline.js` (overlay, output format), `src/run.js` (`run(config, options)`), `src/compress.js`. Before/after verified on the full `01_input` tree (111 sources, 212 outputs): names, dimensions, formats and byte sizes identical. `run()` summary shape: `{ inputDir, outputDir, sourceCount, outputs[], counts: { saved, skipped, failed } }`. Tests: `test/*.test.js`, 15 passing under `node --test`.
+
+**Code review (2026-09-08), left for a human call.** Root `crop-and-resize.js` no longer re-exports the old helper functions (only `run`); `compressAll` now takes `(config, { rootDir, logger })`; `normalizeConfig` supplies output-quality defaults and throws on a missing input or output dir. `counts.skipped` mixes one source-level skip (unreadable dimensions) with per-variant crop skips, which ticket 04's summary work should decide on. Module naming: `crop-plan.js` also holds preset lookup and scale expansion; `pipeline.js` holds overlay, format detection and the encoder.
