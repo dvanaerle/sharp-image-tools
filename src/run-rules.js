@@ -12,6 +12,14 @@ const {
   getExtensionForFormat,
   applyOutputFormat,
 } = require("./pipeline");
+const {
+  matchesOnly,
+  isUpToDate,
+  createWriteBudget,
+  mapConcurrent,
+  createProgress,
+} = require("./run-control");
+const { buildSummary, printSummary, describeError } = require("./summary");
 
 // Windows paths compare case-insensitively; a mistyped drive-letter case
 // must not slip past the read-only guard.
@@ -50,10 +58,21 @@ function warnShadowedRules(rules, logger) {
   }
 }
 
+// --only keeps the input entries whose path or category label contains the
+// substring. The read-only guard still checks every configured input.
+function selectInputs(inputs, only, logger) {
+  const selected = inputs.filter((input) =>
+    matchesOnly(only, input.path, input.category),
+  );
+  if (only !== null && selected.length === 0) {
+    logger.warn(`Warning: no input path or category contains "${only}".`);
+  }
+  return selected;
+}
+
 // Walks every input and splits its files into eligible sources (with their
 // rule and output path) and ignored files. Nothing is opened here.
-async function planInputs(config) {
-  const { inputs, outputDir, skuPrefixes, rules } = config;
+async function planInputs({ inputs, outputDir, skuPrefixes, rules }) {
   const sources = [];
   const ignored = [];
   for (const { path: inputPath, category } of inputs) {
@@ -104,29 +123,53 @@ function assertNoCollisions(sources) {
   }
 }
 
-async function processSource({ source, config, logger }) {
-  const { sourcePath, outputPath, category, format, rule, ruleIndex } = source;
-  const entry = { sourcePath, outputPath, category, format, ruleIndex };
-  logger.log(`\nProcessing: ${sourcePath}`);
+function describeWindow(window, srcWidth, srcHeight) {
+  return `window ${window.width}x${window.height} at ${window.left},${window.top} of ${srcWidth}x${srcHeight} -> ${window.outputWidth}x${window.outputHeight}`;
+}
 
-  if (!rule) {
-    logger.warn("  Skipping: no rule matches.");
-    return { ...entry, status: "skipped", reason: "no-rule" };
-  }
+/*
+  Processes one eligible source and returns its summary entry. Nothing is
+  logged here: with several sources in flight, the runner prints one line per
+  finished file instead. Order of checks: rule, skip-existing, plan, dry-run,
+  write budget, write.
+*/
+async function processSource({ source, config, force, dryRun, budget }) {
+  const { sourcePath, outputPath, category, format, rule, ruleIndex } = source;
+  const entry = {
+    sourcePath,
+    outputPath,
+    category,
+    format,
+    ruleIndex,
+    rule: ruleIndex === -1 ? null : ruleIndex + 1,
+  };
+
+  if (!rule) return { ...entry, status: "skipped", reason: "no-rule" };
 
   try {
+    if (!force && (await isUpToDate(sourcePath, outputPath))) {
+      return { ...entry, status: "skipped", reason: "up-to-date" };
+    }
+
     const metadata = await sharp(sourcePath).metadata();
     const { width: srcWidth, height: srcHeight } =
       getOrientedDimensions(metadata);
     if (!isPositiveNumber(srcWidth) || !isPositiveNumber(srcHeight)) {
-      logger.warn("  Skipping: could not read source dimensions.");
       return { ...entry, status: "skipped", reason: "no-dimensions" };
     }
 
     const window = createCropWindow({ srcWidth, srcHeight, rule });
-    logger.log(
-      `  Rule ${ruleIndex + 1}: window ${window.width}x${window.height} at ${window.left},${window.top} of ${srcWidth}x${srcHeight} -> ${window.outputWidth}x${window.outputHeight}`,
-    );
+    const planned = {
+      ...entry,
+      srcWidth,
+      srcHeight,
+      width: window.outputWidth,
+      height: window.outputHeight,
+      plan: `rule ${ruleIndex + 1}: ${describeWindow(window, srcWidth, srcHeight)}`,
+    };
+
+    if (dryRun) return { ...planned, status: "planned" };
+    if (!budget.claim()) return { ...planned, status: "skipped", reason: "limit" };
 
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
     const pipeline = sharp(sourcePath)
@@ -141,52 +184,68 @@ async function processSource({ source, config, logger }) {
     await applyOutputFormat(pipeline, format, config.outputConfig).toFile(
       outputPath,
     );
-    logger.log(`  Saved: ${outputPath}`);
-    return {
-      ...entry,
-      width: window.outputWidth,
-      height: window.outputHeight,
-      status: "saved",
-    };
+    return { ...planned, status: "saved" };
   } catch (err) {
-    logger.error(`  Error processing ${sourcePath}:`, err);
     return { ...entry, status: "failed", reason: "source-error", error: err };
   }
 }
 
-// Rule-mode counterpart of run(): `config` is already normalised.
-async function runRules(config, { logger }) {
+function describeEntry(entry) {
+  switch (entry.status) {
+    case "saved":
+      return `saved   ${entry.sourcePath} -> ${entry.outputPath}`;
+    case "planned":
+      return `plan    ${entry.sourcePath}: ${entry.plan}, ${entry.outputPath}`;
+    case "skipped":
+      return `skipped ${entry.sourcePath} (${entry.reason})`;
+    default:
+      return `FAILED  ${entry.sourcePath}: ${describeError(entry.error)}`;
+  }
+}
+
+// Rule-mode counterpart of run(): `config` and `options` are already normalised.
+async function runRules(config, options) {
+  const { logger, concurrency, force, limit, only, dryRun } = options;
   warnShadowedRules(config.rules, logger);
   assertOutputOutsideInputs(config.outputDir, config.inputs);
 
-  const { sources, ignored } = await planInputs(config);
+  const inputs = selectInputs(config.inputs, only, logger);
+  const { sources, ignored } = await planInputs({ ...config, inputs });
   assertNoCollisions(sources);
   logger.log(
-    `Found ${sources.length} eligible image(s) across ${config.inputs.length} input(s); ignoring ${ignored.length} file(s)`,
+    `Found ${sources.length} eligible image(s) across ${inputs.length} input(s); ignoring ${ignored.length} file(s)${dryRun ? " (dry run, nothing will be written)" : ""}`,
   );
 
-  const outputs = [];
-  for (const source of sources) {
-    outputs.push(await processSource({ source, config, logger }));
+  const budget = createWriteBudget(limit);
+  const progress = createProgress(sources.length, logger);
+  const results = await mapConcurrent(
+    sources,
+    concurrency,
+    async (source) => {
+      const entry = await processSource({ source, config, force, dryRun, budget });
+      progress.tick(describeEntry(entry));
+      return entry;
+    },
+    { shouldStop: () => budget.exhausted() },
+  );
+  const outputs = results.filter((entry) => entry !== undefined);
+  if (outputs.length < sources.length) {
+    logger.log(
+      `Limit of ${limit} written file(s) reached; ${sources.length - outputs.length} source(s) not processed.`,
+    );
   }
 
-  const counts = { saved: 0, skipped: 0, failed: 0, ignored: ignored.length };
-  for (const entry of outputs) counts[entry.status] += 1;
-
-  logger.log("\nAll images processed!");
-  if (ignored.length > 0) {
-    logger.log(`Ignored ${ignored.length} file(s):`);
-    for (const entry of ignored) logger.log(`  ${entry.sourcePath}`);
-  }
-
-  return {
-    inputs: config.inputs,
+  const summary = buildSummary({
+    mode: "rules",
+    inputs,
     outputDir: config.outputDir,
     sourceCount: sources.length,
     outputs,
     ignored,
-    counts,
-  };
+    dryRun,
+  });
+  printSummary(summary, logger);
+  return summary;
 }
 
 module.exports = { runRules, assertOutputOutsideInputs, assertNoCollisions };

@@ -64,7 +64,7 @@ test("square rule, default rule, nested discovery, category folders and format p
   // Default rule never upscales: 100x60 passes through, PNG stays PNG.
   assert.equal(await size(path.join(outputDir, "Carport Modern", "CAR-1-51-2.png")), "100x60 png");
   assert.equal(summary.sourceCount, 5);
-  assert.deepEqual(summary.counts, { saved: 5, skipped: 0, failed: 0, ignored: 0 });
+  assert.deepEqual(summary.counts, { saved: 5, skipped: 0, failed: 0, ignored: 0, planned: 0 });
   const squareEntry = summary.outputs.find((o) => o.sourcePath.endsWith("BUN-1413081-51-0.jpg"));
   assert.equal(squareEntry.ruleIndex, 0);
   assert.equal(squareEntry.category, "Veranda Modern");
@@ -107,7 +107,7 @@ test("non-SKU, psd and db files are ignored, never opened, and counted", async (
   );
 
   assert.deepEqual(await listFiles(outputDir), ["acc/ACC-1-0.jpg"]);
-  assert.deepEqual(summary.counts, { saved: 1, skipped: 0, failed: 0, ignored: 4 });
+  assert.deepEqual(summary.counts, { saved: 1, skipped: 0, failed: 0, ignored: 4, planned: 0 });
   assert.deepEqual(
     summary.ignored.map((entry) => path.basename(entry.sourcePath)).sort(),
     ["3m.jpg", "ACC-1-0.psd", "Thumbs.db", "gumax-zonwering-detailfoto.jpg"],

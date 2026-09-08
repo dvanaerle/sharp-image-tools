@@ -38,7 +38,7 @@ test("a jpeg in a preset folder is cropped to the preset size and kept as jpeg",
   assert.equal(meta.height, 90);
   assert.equal(meta.format, "jpeg");
   assert.equal(summary.sourceCount, 1);
-  assert.deepEqual(summary.counts, { saved: 1, skipped: 0, failed: 0 });
+  assert.deepEqual(summary.counts, { saved: 1, skipped: 0, failed: 0, ignored: 0, planned: 0 });
 });
 
 test("a locale preset badge is composited bottom-right; a noWatermark preset opts out", async (t) => {
@@ -146,6 +146,52 @@ test("an unreadable source is reported as failed and the rest of the batch still
   const summary = await run({ inputDir, outputDir }, { logger: silentLogger });
 
   assert.equal(summary.sourceCount, 2);
-  assert.deepEqual(summary.counts, { saved: 1, skipped: 0, failed: 1 });
+  assert.deepEqual(summary.counts, { saved: 1, skipped: 0, failed: 1, ignored: 0, planned: 0 });
   assert.deepEqual(await listFiles(outputDir), ["ok.jpg"]);
+});
+
+test("preset mode honours the run-control options: skip-existing, --only, --limit, --dry-run, --report", async (t) => {
+  const root = await makeTempDir(t);
+  const inputDir = path.join(root, "input");
+  const outputDir = path.join(root, "output");
+  const config = {
+    inputDir,
+    outputDir,
+    folderSizePresets: { tiles: { sizes: [{ width: 40, height: 20 }, { width: 20, height: 10 }] } },
+  };
+  for (const name of ["a", "b", "c"]) {
+    await writeImage(path.join(inputDir, "tiles", `${name}.jpg`), 80, 40, "jpeg", red);
+  }
+  await writeImage(path.join(inputDir, "other", "d.jpg"), 80, 40, "jpeg", red);
+  await fs.writeFile(path.join(inputDir, "tiles", "Thumbs.db"), "x");
+
+  const dry = await run(config, { logger: silentLogger, dryRun: true, only: "tiles" });
+  await assert.rejects(fs.access(outputDir));
+  assert.equal(dry.sourceCount, 3);
+  assert.deepEqual(dry.counts, { saved: 0, skipped: 0, failed: 0, ignored: 1, planned: 6 });
+
+  const limited = await run(config, { logger: silentLogger, only: "tiles", limit: 3, concurrency: 2 });
+  assert.equal(limited.counts.saved, 3);
+  assert.equal((await listFiles(outputDir)).length, 3);
+
+  const reportPath = path.join(root, "report.csv");
+  const rest = await run(config, { logger: silentLogger, report: reportPath });
+  assert.equal(rest.counts.saved, 4);
+  assert.equal(rest.counts.skipped, 3);
+  assert.deepEqual(await listFiles(outputDir), [
+    "other/d.jpg",
+    "tiles/a-20x10.jpg",
+    "tiles/a-40x20.jpg",
+    "tiles/b-20x10.jpg",
+    "tiles/b-40x20.jpg",
+    "tiles/c-20x10.jpg",
+    "tiles/c-40x20.jpg",
+  ]);
+  const rows = (await fs.readFile(reportPath, "utf8")).trim().split(/\r?\n/);
+  assert.equal(rows.length, 1 + 7 + 1);
+  const aRow = rows.find((r) => r.includes(path.join("output", "tiles", "a-40x20.jpg")));
+  assert.match(aRow, /,tiles,80x40,40x20,(saved|skipped)$/);
+
+  const again = await run(config, { logger: silentLogger, force: true });
+  assert.equal(again.counts.saved, 7);
 });

@@ -7,27 +7,48 @@ const { parseArgs, resolveConfigPath } = require("../src/cli");
 
 const root = path.resolve(__dirname, "..");
 
-test("without --config the root config is used", () => {
-  assert.deepEqual(parseArgs([]), { configPath: null });
+test("without --config the root config is used and no run option is set", () => {
+  assert.deepEqual(parseArgs([]), { configPath: null, runOptions: {} });
   assert.equal(resolveConfigPath(null, root), path.join(root, "config.js"));
 });
 
 test("--config <path> selects a config file relative to the working directory", () => {
-  assert.deepEqual(parseArgs(["--config", "configs/channable.js"]), {
-    configPath: "configs/channable.js",
-  });
-  assert.deepEqual(parseArgs(["--config=configs/channable.js"]), {
-    configPath: "configs/channable.js",
-  });
+  assert.equal(parseArgs(["--config", "configs/channable.js"]).configPath, "configs/channable.js");
+  assert.equal(parseArgs(["--config=configs/channable.js"]).configPath, "configs/channable.js");
   assert.equal(
     resolveConfigPath("configs/channable.js", root),
     path.join(root, "configs", "channable.js"),
   );
 });
 
-test("--config without a value, and unknown flags, are rejected", () => {
-  assert.throws(() => parseArgs(["--config"]), /--config requires a path/);
+test("run-control flags map onto run() options, in both --flag value and --flag=value form", () => {
+  const { runOptions } = parseArgs([
+    "--concurrency", "8",
+    "--limit=5",
+    "--only", "Ledspots",
+    "--dry-run",
+    "--force",
+    "--report=out.csv",
+  ]);
+  assert.deepEqual(runOptions, {
+    concurrency: 8,
+    limit: 5,
+    only: "Ledspots",
+    dryRun: true,
+    force: true,
+    report: "out.csv",
+  });
+});
+
+test("missing values, bad numbers and unknown flags are rejected", () => {
+  assert.throws(() => parseArgs(["--config"]), /--config requires a value/);
+  assert.throws(() => parseArgs(["--only"]), /--only requires a value/);
+  assert.throws(() => parseArgs(["--only", "--force"]), /--only requires a value/);
+  assert.throws(() => parseArgs(["--concurrency", "0"]), /--concurrency must be a positive integer/);
+  assert.throws(() => parseArgs(["--limit", "abc"]), /--limit must be a positive integer/);
+  assert.throws(() => parseArgs(["--dry-run=yes"]), /--dry-run does not take a value/);
   assert.throws(() => parseArgs(["--confg", "x.js"]), /Unknown argument: --confg/);
+  assert.throws(() => parseArgs(["stray"]), /Unknown argument: stray/);
 });
 
 test("the shipped Channable config is a valid rule config", () => {

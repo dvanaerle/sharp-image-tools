@@ -4,7 +4,7 @@ const sharp = require("sharp");
 const path = require("path");
 const fs = require("fs").promises;
 const { normalizeConfig } = require("./config");
-const { getImageFiles, getImageContext } = require("./discover");
+const { IMAGE_RE, getAllFiles, getImageContext } = require("./discover");
 const {
   isPositiveNumber,
   createResizeCropPlan,
@@ -25,9 +25,19 @@ const {
   applyOutputFormat,
 } = require("./pipeline");
 const { runRules } = require("./run-rules");
+const {
+  normalizeRunOptions,
+  matchesOnly,
+  isUpToDate,
+  createWriteBudget,
+  mapConcurrent,
+  createProgress,
+} = require("./run-control");
+const { buildSummary, printSummary, writeReport } = require("./summary");
 
 // Processes one source image; returns one summary entry per output variant.
-async function processImage({ config, imageFile, renderer, logger }) {
+// `force`, `dryRun` and `budget` are the run-control knobs (see run-control.js).
+async function processImage({ config, imageFile, renderer, logger, force, dryRun, budget }) {
   const {
     inputDir,
     outputDir,
@@ -235,6 +245,9 @@ async function processImage({ config, imageFile, renderer, logger }) {
           sourcePath: srcImage,
           outputPath,
           presetKey: folderPresetKey ?? null,
+          rule: folderPresetKey ?? null,
+          srcWidth,
+          srcHeight,
           width,
           height,
           format: outputFormat,
@@ -244,6 +257,24 @@ async function processImage({ config, imageFile, renderer, logger }) {
           if (!cropIsValid) {
             logger.warn(`  Skipping invalid crop for ${fileName}`);
             results.push({ ...entry, status: "skipped", reason: "invalid-crop" });
+            continue;
+          }
+
+          if (!force && (await isUpToDate(srcImage, outputPath))) {
+            logger.log(`  Up to date: ${fileName}`);
+            results.push({ ...entry, status: "skipped", reason: "up-to-date" });
+            continue;
+          }
+
+          if (dryRun) {
+            logger.log(`  Plan: ${width}x${height} ${outputFormat} -> ${outputPath}`);
+            results.push({ ...entry, status: "planned" });
+            continue;
+          }
+
+          if (!budget.claim()) {
+            logger.log(`  Limit reached, not writing: ${fileName}`);
+            results.push({ ...entry, status: "skipped", reason: "limit" });
             continue;
           }
 
@@ -357,12 +388,74 @@ async function processImage({ config, imageFile, renderer, logger }) {
   return results;
 }
 
-function countStatuses(outputs) {
-  const counts = { saved: 0, skipped: 0, failed: 0 };
-  for (const entry of outputs) {
-    counts[entry.status] += 1;
+function describeImage(relativePath, entries) {
+  const tally = {};
+  for (const entry of entries) tally[entry.status] = (tally[entry.status] ?? 0) + 1;
+  const parts = Object.entries(tally).map(([status, n]) => `${n} ${status}`);
+  return `${relativePath}: ${parts.join(", ")}`;
+}
+
+// Preset mode: one input root, presets matched by folder name. `--only`
+// filters on the path relative to inputDir. Non-image files are reported as
+// ignored, never opened.
+async function runPresets(config, options) {
+  const { logger, concurrency, force, limit, only, dryRun } = options;
+  const renderer = createWatermarkRenderer();
+
+  const allFiles = await getAllFiles(config.inputDir);
+  const ignored = allFiles
+    .filter((file) => !IMAGE_RE.test(path.basename(file)))
+    .map((sourcePath) => ({ sourcePath, status: "ignored" }));
+  const imageFiles = allFiles.filter(
+    (file) =>
+      IMAGE_RE.test(path.basename(file)) &&
+      matchesOnly(only, path.relative(config.inputDir, file)),
+  );
+  if (only !== null && imageFiles.length === 0) {
+    logger.warn(`Warning: no image path under ${config.inputDir} contains "${only}".`);
   }
-  return counts;
+  logger.log(
+    `Found ${imageFiles.length} image(s) to process; ignoring ${ignored.length} file(s)${dryRun ? " (dry run, nothing will be written)" : ""}`,
+  );
+
+  const budget = createWriteBudget(limit);
+  const progress = createProgress(imageFiles.length, logger);
+  const results = await mapConcurrent(
+    imageFiles,
+    concurrency,
+    async (imageFile) => {
+      const entries = await processImage({
+        config,
+        imageFile,
+        renderer,
+        logger,
+        force,
+        dryRun,
+        budget,
+      });
+      progress.tick(describeImage(path.relative(config.inputDir, imageFile), entries));
+      return entries;
+    },
+    { shouldStop: () => budget.exhausted() },
+  );
+  const processed = results.filter((entries) => entries !== undefined);
+  if (processed.length < imageFiles.length) {
+    logger.log(
+      `Limit of ${limit} written file(s) reached; ${imageFiles.length - processed.length} image(s) not processed.`,
+    );
+  }
+
+  const summary = buildSummary({
+    mode: "presets",
+    inputDir: config.inputDir,
+    outputDir: config.outputDir,
+    sourceCount: imageFiles.length,
+    outputs: processed.flat(),
+    ignored,
+    dryRun,
+  });
+  printSummary(summary, logger);
+  return summary;
 }
 
 /*
@@ -370,41 +463,29 @@ function countStatuses(outputs) {
 
   `rawConfig` is either the root-config shape (inputDir + folder presets) or
   a rule-based config (inputs + rules, see configs/channable.js). Relative
-  paths resolve against the process working directory, as before. All
-  progress output goes to `options.logger` (defaults to console).
+  paths resolve against the process working directory, as before.
 
-  Resolves to { inputDir, outputDir, sourceCount, outputs, counts }. Each
-  entry in `outputs` has a `status` of "saved", "skipped" or "failed", and
-  `counts` tallies those statuses. Rule mode returns `inputs` instead of
-  `inputDir`, plus `ignored` (files never opened) and `counts.ignored`.
+  `options`: logger (default console), concurrency (default 4), force
+  (rewrite up-to-date outputs), limit (stop after N written files), only
+  (substring filter), dryRun (plan only, write nothing), report (CSV path).
+
+  Resolves to the summary the console prints: { mode, outputDir, sourceCount,
+  outputs, ignored, failed, counts, dryRun } plus `inputDir` (preset mode) or
+  `inputs` (rule mode). Each entry in `outputs` has a `status` of "saved",
+  "skipped", "failed" or "planned"; `counts` tallies those plus `ignored`.
 */
 async function run(rawConfig, options = {}) {
   const config = normalizeConfig(rawConfig);
-  const logger = options.logger ?? console;
-  if (config.mode === "rules") {
-    return runRules(config, { logger });
+  const runOptions = normalizeRunOptions(options);
+  const summary =
+    config.mode === "rules"
+      ? await runRules(config, runOptions)
+      : await runPresets(config, runOptions);
+  if (runOptions.report !== null) {
+    await writeReport(runOptions.report, summary);
+    runOptions.logger.log(`Report written: ${runOptions.report}`);
   }
-  const renderer = createWatermarkRenderer();
-
-  const imageFiles = await getImageFiles(config.inputDir);
-  logger.log(`Found ${imageFiles.length} image(s) to process`);
-
-  const outputs = [];
-  for (const imageFile of imageFiles) {
-    outputs.push(
-      ...(await processImage({ config, imageFile, renderer, logger })),
-    );
-  }
-
-  logger.log("\nAll images processed!");
-
-  return {
-    inputDir: config.inputDir,
-    outputDir: config.outputDir,
-    sourceCount: imageFiles.length,
-    outputs,
-    counts: countStatuses(outputs),
-  };
+  return summary;
 }
 
 module.exports = { run };
