@@ -69,8 +69,9 @@ async function compressFolder(productDir) {
   }
 }
 
-async function compressAll() {
-  const { rootDir } = compressConfig;
+// Processes every product folder under `rootDir` (defaults to the configured
+// root). Pass a different root to run against another tree, e.g. for testing.
+async function compressAll(rootDir = compressConfig.rootDir) {
 
   // If rootDir is itself a product folder (contains a source folder), process
   // just that one. Otherwise treat its children as product folders.
@@ -88,7 +89,8 @@ async function compressAll() {
 }
 
 if (require.main === module) {
-  compressAll().catch((err) => {
+  // Optional CLI override: `node compress.js <rootDir>`
+  compressAll(process.argv[2]).catch((err) => {
     console.error("Fatal error:", err);
     process.exitCode = 1;
   });

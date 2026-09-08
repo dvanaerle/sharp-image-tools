@@ -33,3 +33,8 @@ Desktop.ini
 *.swp
 *.swo
 
+# Channable export output
+/google-channable-export/
+
+# Tooling scratch output
+/.playwright-mcp/

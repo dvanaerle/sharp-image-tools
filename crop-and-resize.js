@@ -963,6 +963,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  applyOutputFormat,
   getActiveFormatsForDirectory,
   getOutputFormatForSource,
   getOutputFileName,
