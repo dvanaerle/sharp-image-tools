@@ -1,7 +1,7 @@
 "use strict";
 
-const inputDir = "./01_input/tm-home";
-const outputDir = "./02_compressed";
+const inputDir = "./01_input/tm-actie";
+const outputDir = "./02_tm-actie-28-09";
 
 const includeDimensionsInFileName = false;
 const formatsEnabled = false;
@@ -112,6 +112,13 @@ const folderSizePresets = {
     ],
   },
 
+  "tm-schuifwand": {
+    sizes: [
+      {
+        width: 1360, height: 765
+      }
+    ],
+  },
   "tm-bamboo-decking": {
     sizes: [
       {
@@ -141,6 +148,11 @@ const folderSizePresets = {
       { width: 276, height: 264, left: 1, top: 0.5 }
     ],
     outputFormat: "jpeg",
+  },
+    "tm-productinformatie": {
+    sizes: [
+      { width: 450, height: 200, top: 0.75 },
+    ],
   },
   // Home promo tiles (<picture> sources). CSS max → export @2x.
   // ≥1024 tablet 740×370 · ≥768 landscape 487×243 ·
@@ -205,6 +217,7 @@ const folderSizePresets = {
   "tm-home": {
     noUpscale: true,
     noWatermark: true,
+    outputFormat: "jpeg",
     sizes: [
       {
         width: 1248,
@@ -450,7 +463,7 @@ const watermarkConfig = {
   // Fallback; product-images overrides per size (phone 1/2, others 1/3).
   scale: 1 / 3,
   fixedSize: false,
-  // Voordeelweken campaign. Switch *-28sept.svg ↔ *-7okt.svg when the
+  // Voordeelweken campaign. Switch *-7okt.svg ↔ *-7okt.svg when the
   // campaign end date changes. Note the EN badge is named -UK-, not -EN-.
   //
   // The `folder` values must match the locale folder names on disk EXACTLY
@@ -461,27 +474,27 @@ const watermarkConfig = {
     {
       folder: "nl-nl",
       imagePath:
-        "./watermark/2026-08-20-Voordeelweken/2026-08-20-Voordeelweken_RGB-NL-28sept.svg",
+        "./watermark/2026-08-20-Voordeelweken/2026-08-20-Voordeelweken_RGB-NL-7okt.svg",
     },
     {
       folder: "nl-be",
       imagePath:
-        "./watermark/2026-08-20-Voordeelweken/2026-08-20-Voordeelweken_RGB-NL-28sept.svg",
+        "./watermark/2026-08-20-Voordeelweken/2026-08-20-Voordeelweken_RGB-NL-7okt.svg",
     },
     {
       folder: "de-de",
       imagePath:
-        "./watermark/2026-08-20-Voordeelweken/2026-08-20-Voordeelweken_RGB-DE-28sept.svg",
+        "./watermark/2026-08-20-Voordeelweken/2026-08-20-Voordeelweken_RGB-DE-7okt.svg",
     },
     {
       folder: "en-gb",
       imagePath:
-        "./watermark/2026-08-20-Voordeelweken/2026-08-20-Voordeelweken_RGB-UK-28sept.svg",
+        "./watermark/2026-08-20-Voordeelweken/2026-08-20-Voordeelweken_RGB-UK-7okt.svg",
     },
     {
       folder: "be-fr",
       imagePath:
-        "./watermark/2026-08-20-Voordeelweken/2026-08-20-Voordeelweken_RGB-FR-28sept.svg",
+        "./watermark/2026-08-20-Voordeelweken/2026-08-20-Voordeelweken_RGB-FR-7okt.svg",
     },
   ],
 };
@@ -563,8 +576,8 @@ const outputConfig = {
   so the result is exactly that size).
 */
 const compressConfig = {
-  rootDir:
-    "V:/Gumax®/02. Beeldbank/02. Renders/01. Webshop afbeeldingen/09. Losse onderdelen",
+  rootDir: "./01_input/levergebied",
+  preserveDimensions: true,
   sourceFolderNames: ["Origineel"],
   outputFolderName: "Gecomprimeerd",
   width: 640,
