@@ -8,7 +8,8 @@
     "build": "node crop-and-resize.js",
     "build:channable": "node crop-and-resize.js --config configs/channable.js",
     "compress": "node compress.js",
-    "test": "node --test"
+    "test": "node --test",
+    "sheet": "node contact-sheet.js"
   },
   "dependencies": {
     "sharp": "^0.35.5"
