@@ -1,5 +1,7 @@
 "use strict";
 
+const { isAspect, parseAspect } = require("./crop-window");
+
 const DEFAULT_OUTPUT_CONFIG = {
   jpegQuality: 75,
   pngCompressionLevel: 9,
@@ -48,8 +50,26 @@ function normalizeRule(rule, index) {
     throw new Error(`${label}.width must be a positive number`);
   }
   const aspect = rule.aspect ?? "source";
-  if (aspect !== "1:1" && aspect !== "source") {
-    throw new Error(`${label}.aspect must be "1:1" or "source"`);
+  if (!isAspect(aspect)) {
+    throw new Error(`${label}.aspect must be "source" or a "w:h" ratio`);
+  }
+  const fit = rule.fit ?? "none";
+  if (fit !== "none" && fit !== "product") {
+    throw new Error(`${label}.fit must be "none" or "product"`);
+  }
+  if (rule.ladder !== undefined) {
+    if (!Array.isArray(rule.ladder) || rule.ladder.length === 0) {
+      throw new Error(`${label}.ladder must be a non-empty array of "w:h" ratios`);
+    }
+    for (const aspect of rule.ladder) {
+      if (parseAspect(aspect) === null) {
+        throw new Error(`${label}.ladder entries must be "w:h" ratios, got ${JSON.stringify(aspect)}`);
+      }
+    }
+  }
+  const fitMargin = rule.fitMargin ?? 0;
+  if (!Number.isFinite(fitMargin) || fitMargin < 0 || fitMargin > 0.2) {
+    throw new Error(`${label}.fitMargin must be a number between 0 and 0.2`);
   }
   const zoom = rule.zoom ?? 1;
   if (!Number.isFinite(zoom) || zoom < 1) {
@@ -60,7 +80,7 @@ function normalizeRule(rule, index) {
   if (!isAnchor(top) || !isAnchor(left)) {
     throw new Error(`${label}.top and .left must be between 0 and 1`);
   }
-  for (const key of ["startsWith", "endsWith"]) {
+  for (const key of ["startsWith", "endsWith", "category"]) {
     if (rule[key] !== undefined && typeof rule[key] !== "string") {
       throw new Error(`${label}.${key} must be a string`);
     }
@@ -73,9 +93,47 @@ function normalizeRule(rule, index) {
     left,
     upscale: rule.upscale === true,
   };
+  if (fit === "product") {
+    normalized.fit = fit;
+    normalized.fitMargin = fitMargin;
+    if (rule.ladder !== undefined) normalized.ladder = [...rule.ladder];
+  }
   if (rule.startsWith !== undefined) normalized.startsWith = rule.startsWith;
   if (rule.endsWith !== undefined) normalized.endsWith = rule.endsWith;
+  if (rule.category !== undefined) normalized.category = rule.category;
   return normalized;
+}
+
+/*
+  Hand corrections for `fit: "product"`. Each entry matches a source path by
+  case-insensitive substring (the size folder name is the useful handle) and
+  replaces what detection would have chosen. `aspect` forces the output
+  format, `left` the horizontal anchor (0 flush left, 0.5 centred, 1 flush
+  right); either may be given on its own.
+*/
+function normalizeFitOverrides(raw) {
+  if (!Array.isArray(raw)) {
+    throw new Error("config.fitOverrides must be an array");
+  }
+  return raw.map((override, index) => {
+    const label = `config.fitOverrides[${index}]`;
+    if (typeof override?.match !== "string" || override.match.length === 0) {
+      throw new Error(`${label}.match must be a non-empty string`);
+    }
+    if (override.aspect !== undefined && !isAspect(override.aspect)) {
+      throw new Error(`${label}.aspect must be "source" or a "w:h" ratio`);
+    }
+    if (override.left !== undefined && !isAnchor(override.left)) {
+      throw new Error(`${label}.left must be between 0 and 1`);
+    }
+    if (override.aspect === undefined && override.left === undefined) {
+      throw new Error(`${label} must set aspect, left, or both`);
+    }
+    const normalized = { match: override.match };
+    if (override.aspect !== undefined) normalized.aspect = override.aspect;
+    if (override.left !== undefined) normalized.left = override.left;
+    return normalized;
+  });
 }
 
 /*
@@ -104,6 +162,7 @@ function normalizeRuleConfig(raw) {
   if (!Array.isArray(raw.skuPrefixes) || raw.skuPrefixes.length === 0) {
     throw new Error("config.skuPrefixes must be a non-empty array");
   }
+  const fitOverrides = normalizeFitOverrides(raw.fitOverrides ?? []);
 
   return {
     mode: "rules",
@@ -111,8 +170,14 @@ function normalizeRuleConfig(raw) {
     inputs: raw.inputs.map(({ path, category }) => ({ path, category })),
     skuPrefixes: [...raw.skuPrefixes],
     rules: raw.rules.map(normalizeRule),
+    fitOverrides,
     outputConfig: { ...DEFAULT_OUTPUT_CONFIG, ...(raw.outputConfig ?? {}) },
   };
 }
 
-module.exports = { DEFAULT_OUTPUT_CONFIG, normalizeConfig, normalizeRule };
+module.exports = {
+  DEFAULT_OUTPUT_CONFIG,
+  normalizeConfig,
+  normalizeRule,
+  normalizeFitOverrides,
+};

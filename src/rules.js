@@ -8,25 +8,32 @@ const { IMAGE_RE } = require("./discover");
 
   `rules` is an ordered array; the first rule whose matchers all pass wins.
   Matchers `startsWith` / `endsWith` are tested against the basename without
-  extension. A rule with no matchers matches everything (the default).
+  extension, `category` case-insensitively against the input entry's category
+  label. A rule with no matchers matches everything (the default).
 */
-function ruleMatches(rule, baseName) {
+function ruleMatches(rule, baseName, category = "") {
   if (rule.startsWith !== undefined && !baseName.startsWith(rule.startsWith)) {
     return false;
   }
   if (rule.endsWith !== undefined && !baseName.endsWith(rule.endsWith)) {
     return false;
   }
+  if (
+    rule.category !== undefined &&
+    !category.toLowerCase().includes(rule.category.toLowerCase())
+  ) {
+    return false;
+  }
   return true;
 }
 
-function matchRule(rules, baseName) {
-  return rules.find((rule) => ruleMatches(rule, baseName)) ?? null;
+function matchRule(rules, baseName, category) {
+  return rules.find((rule) => ruleMatches(rule, baseName, category)) ?? null;
 }
 
-// `earlier` covers `later` when every basename `later` accepts, `earlier`
-// accepts too: each matcher of `earlier` is absent or a prefix/suffix of the
-// corresponding matcher of `later`.
+// `earlier` covers `later` when everything `later` accepts, `earlier` accepts
+// too: each matcher of `earlier` is absent or weaker than the corresponding
+// matcher of `later`.
 function covers(earlier, later) {
   const startOk =
     earlier.startsWith === undefined ||
@@ -35,7 +42,11 @@ function covers(earlier, later) {
   const endOk =
     earlier.endsWith === undefined ||
     (later.endsWith !== undefined && later.endsWith.endsWith(earlier.endsWith));
-  return startOk && endOk;
+  const categoryOk =
+    earlier.category === undefined ||
+    (later.category !== undefined &&
+      later.category.toLowerCase().includes(earlier.category.toLowerCase()));
+  return startOk && endOk && categoryOk;
 }
 
 // Returns [{ index, shadowedBy }] for every rule that can never match

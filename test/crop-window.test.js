@@ -2,7 +2,11 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createCropWindow } = require("../src/crop-window");
+const {
+  createCropWindow,
+  parseAspect,
+  isAspect,
+} = require("../src/crop-window");
 
 const square = { aspect: "1:1", width: 1500, upscale: true };
 const fallback = { width: 1500 };
@@ -50,4 +54,31 @@ test("zoom divides the window and top/left anchor it; zoom 1 crops only what the
 
   const none = createCropWindow({ srcWidth: 1920, srcHeight: 1080, rule: { width: 3000, zoom: 1 } });
   assert.deepEqual([none.left, none.top, none.width, none.height], [0, 0, 1920, 1080]);
+});
+
+test("an arbitrary w:h aspect takes the largest window of that ratio", () => {
+  const wide = createCropWindow({
+    srcWidth: 1920, srcHeight: 1080, rule: { aspect: "4:3", width: 1500, upscale: true },
+  });
+  assert.deepEqual([wide.left, wide.top, wide.width, wide.height], [240, 0, 1440, 1080]);
+  assert.deepEqual([wide.outputWidth, wide.outputHeight], [1500, 1125]);
+
+  // Taller than the target ratio: the width is the limit instead.
+  const tall = createCropWindow({
+    srcWidth: 1000, srcHeight: 1000, rule: { aspect: "4:3", width: 800, upscale: true },
+  });
+  assert.deepEqual([tall.left, tall.top, tall.width, tall.height], [0, 125, 1000, 750]);
+});
+
+test("parseAspect accepts w:h and rejects anything else", () => {
+  assert.equal(parseAspect("4:3"), 4 / 3);
+  assert.equal(parseAspect("1:1"), 1);
+  assert.equal(parseAspect("2.5:1"), 2.5);
+  assert.equal(parseAspect("source"), null);
+  assert.equal(parseAspect(undefined), null);
+  assert.equal(parseAspect("4:0"), null);
+  assert.equal(parseAspect("4-3"), null);
+  assert.equal(isAspect("16:9"), true);
+  assert.equal(isAspect("source"), true);
+  assert.equal(isAspect("wide"), false);
 });

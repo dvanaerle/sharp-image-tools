@@ -190,7 +190,7 @@ test("preset mode honours the run-control options: skip-existing, --only, --limi
   const rows = (await fs.readFile(reportPath, "utf8")).trim().split(/\r?\n/);
   assert.equal(rows.length, 1 + 7 + 1);
   const aRow = rows.find((r) => r.includes(path.join("output", "tiles", "a-40x20.jpg")));
-  assert.match(aRow, /,tiles,80x40,40x20,(saved|skipped)$/);
+  assert.match(aRow, /,tiles,80x40,40x20,,,(saved|skipped)$/);
 
   const again = await run(config, { logger: silentLogger, force: true });
   assert.equal(again.counts.saved, 7);

@@ -394,10 +394,10 @@ function describeImage(relativePath, entries) {
 }
 
 // Preset mode: one input root, presets matched by folder name. `--only`
-// filters on the path relative to inputDir. Non-image files are reported as
-// ignored, never opened.
+// filters on the path relative to inputDir, `--name` on the basename.
+// Non-image files are reported as ignored, never opened.
 async function runPresets(config, options) {
-  const { logger, force, only, dryRun } = options;
+  const { logger, force, only, name, dryRun } = options;
   const renderer = createWatermarkRenderer();
 
   const allFiles = await getAllFiles(config.inputDir);
@@ -407,10 +407,13 @@ async function runPresets(config, options) {
   const imageFiles = allFiles.filter(
     (file) =>
       IMAGE_RE.test(path.basename(file)) &&
-      matchesOnly(only, path.relative(config.inputDir, file)),
+      matchesOnly(only, path.relative(config.inputDir, file)) &&
+      matchesOnly(name, path.parse(file).name),
   );
-  if (only !== null && imageFiles.length === 0) {
-    logger.warn(`Warning: no image path under ${config.inputDir} contains "${only}".`);
+  if ((only !== null || name !== null) && imageFiles.length === 0) {
+    logger.warn(
+      `Warning: no image under ${config.inputDir} matches ${only !== null ? `--only "${only}"` : ""}${only !== null && name !== null ? " and " : ""}${name !== null ? `--name "${name}"` : ""}.`,
+    );
   }
   logger.log(
     `Found ${imageFiles.length} image(s) to process; ignoring ${ignored.length} file(s)${dryRun ? " (dry run, nothing will be written)" : ""}`,
@@ -446,7 +449,8 @@ async function runPresets(config, options) {
 
   `options`: logger (default console), concurrency (default 4), force
   (rewrite up-to-date outputs), limit (stop after N written files), only
-  (substring filter), dryRun (plan only, write nothing), report (CSV path).
+  (path substring filter), name (basename substring filter), dryRun (plan
+  only, write nothing), report (CSV path).
 
   Resolves to the summary the console prints: { mode, outputDir, sourceCount,
   outputs, ignored, failed, counts, dryRun } plus `inputDir` (preset mode) or

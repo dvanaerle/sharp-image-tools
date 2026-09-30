@@ -6,7 +6,13 @@ const path = require("node:path");
 const fs = require("node:fs/promises");
 const sharp = require("sharp");
 const { run } = require("../src/run");
-const { silentLogger, makeTempDir, writeImage, listFiles, pixelAt } = require("./helpers");
+const {
+  silentLogger,
+  makeTempDir,
+  writeImage,
+  listFiles,
+  pixelAt,
+} = require("./helpers");
 
 async function size(filePath) {
   const meta = await sharp(filePath).metadata();
@@ -198,4 +204,58 @@ test("the run aborts before writing when two sources map to the same output path
     /BUN-1-0\.jpg/,
   );
   await assert.rejects(fs.access(outputDir));
+});
+
+test("--name limits the run to the matching basenames and leaves the rest alone", async (t) => {
+  const root = await makeTempDir(t);
+  const input = path.join(root, "in", "Origineel");
+  const outputDir = path.join(root, "out");
+  await writeImage(path.join(input, "CAR-1-51-0.jpg"), 192, 108);
+  await writeImage(path.join(input, "CAR-1-51-1.jpg"), 192, 108);
+  await writeImage(path.join(input, "CAR-1-71-0.jpg"), 192, 108);
+  await writeImage(path.join(input, "notes.txt"), 10, 10);
+
+  const inputs = [{ path: input, category: "Carport" }];
+  const summary = await run(channableConfig(inputs, outputDir), {
+    logger: silentLogger,
+    name: "-0",
+  });
+
+  assert.deepEqual(await listFiles(outputDir), [
+    "Carport/CAR-1-51-0.jpg",
+    "Carport/CAR-1-71-0.jpg",
+  ]);
+  assert.equal(summary.sourceCount, 2);
+  assert.equal(summary.counts.saved, 2);
+  // The ignored list is not filtered: it still reports every non-SKU file.
+  assert.equal(summary.counts.ignored, 1);
+
+  // A second run with a different filter adds the remaining file without
+  // rewriting the first two.
+  const before = await fs.stat(path.join(outputDir, "Carport", "CAR-1-51-0.jpg"));
+  await run(channableConfig(inputs, outputDir), { logger: silentLogger, name: "-51-1" });
+  assert.deepEqual(await listFiles(outputDir), [
+    "Carport/CAR-1-51-0.jpg",
+    "Carport/CAR-1-51-1.jpg",
+    "Carport/CAR-1-71-0.jpg",
+  ]);
+  const after = await fs.stat(path.join(outputDir, "Carport", "CAR-1-51-0.jpg"));
+  assert.equal(before.mtimeMs, after.mtimeMs);
+});
+
+test("--name that matches nothing warns and writes nothing", async (t) => {
+  const root = await makeTempDir(t);
+  const input = path.join(root, "in", "Origineel");
+  const outputDir = path.join(root, "out");
+  await writeImage(path.join(input, "CAR-1-51-0.jpg"), 192, 108);
+
+  const warnings = [];
+  const summary = await run(
+    channableConfig([{ path: input, category: "Carport" }], outputDir),
+    { logger: { ...silentLogger, warn: (m) => warnings.push(m) }, name: "-9" },
+  );
+
+  assert.equal(summary.sourceCount, 0);
+  assert.ok(warnings.some((m) => m.includes('no eligible filename contains "-9"')));
+  await assert.rejects(() => fs.stat(outputDir));
 });

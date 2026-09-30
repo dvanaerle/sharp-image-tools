@@ -12,6 +12,7 @@ const FLAGS = {
   "--concurrency": { kind: "integer", option: "concurrency" },
   "--limit": { kind: "integer", option: "limit" },
   "--only": { kind: "string", option: "only" },
+  "--name": { kind: "string", option: "name" },
   "--report": { kind: "string", option: "report" },
   "--dry-run": { kind: "boolean", option: "dryRun" },
   "--force": { kind: "boolean", option: "force" },

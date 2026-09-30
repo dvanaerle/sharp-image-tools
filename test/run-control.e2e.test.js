@@ -211,14 +211,18 @@ test("--report writes one CSV row per file; without it no report exists", async 
   await run(channableConfig(inputs, outputDir), { logger: silentLogger, force: true, report: reportPath });
   const csv = await fs.readFile(reportPath, "utf8");
   const rows = csv.trim().split(/\r?\n/);
-  assert.equal(rows[0], "source,output,rule,source size,output size,status");
+  assert.equal(rows[0], "source,output,rule,source size,output size,aspect,fit,status");
   assert.equal(rows.length, 1 + 13);
   const acc = rows.find((r) => r.includes("ACC-0-0.jpg"));
   const cells = acc.split(",");
   assert.equal(cells[2], "1");
   assert.equal(cells[3], "384x216");
   assert.equal(cells[4], "150x150");
-  assert.equal(cells[5], "saved");
+  // aspect and fit are filled in for rule-mode outputs; fit only when the
+  // rule asked for it, which this config does not.
+  assert.equal(cells[5], "1:1");
+  assert.equal(cells[6], "");
+  assert.equal(cells[7], "saved");
   const ignoredRow = rows.find((r) => r.includes("Thumbs.db"));
-  assert.match(ignoredRow, /,,,,ignored$/);
+  assert.match(ignoredRow, /,,,,,,ignored$/);
 });

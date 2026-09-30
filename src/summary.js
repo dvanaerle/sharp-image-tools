@@ -26,6 +26,29 @@ function buildSummary({ outputs, ignored, sourceCount, dryRun, ...rest }) {
     ignored,
     failed: outputs.filter((entry) => entry.status === "failed"),
     counts: countStatuses(outputs, ignored),
+    fits: countFits(outputs),
+  };
+}
+
+/*
+  Breakdown of the output formats `fit: "product"` chose, for the categories
+  where it is on. Square is the goal, so the counts make it obvious how many
+  images had to step up to a wider format, and how many kept the rule's own
+  framing because nothing was detected.
+*/
+function countFits(outputs) {
+  const fitted = outputs.filter((entry) => entry.fitSource);
+  if (fitted.length === 0) return null;
+  const byAspect = {};
+  for (const entry of fitted) {
+    byAspect[entry.aspect] = (byAspect[entry.aspect] ?? 0) + 1;
+  }
+  return {
+    total: fitted.length,
+    square: fitted.filter((entry) => entry.square).length,
+    undetected: fitted.filter((entry) => entry.fitSource === "undetected").length,
+    overridden: fitted.filter((entry) => entry.fitSource === "override").length,
+    byAspect,
   };
 }
 
@@ -34,13 +57,26 @@ function describeError(err) {
 }
 
 function printSummary(summary, logger) {
-  const { counts, sourceCount, ignored, failed, dryRun } = summary;
+  const { counts, sourceCount, ignored, failed, dryRun, fits } = summary;
   const parts = STATUSES.filter((s) => s !== "planned" || dryRun).map(
     (s) => `${counts[s]} ${s}`,
   );
   logger.log(
     `\nSummary${dryRun ? " (dry run)" : ""}: ${parts.join(", ")} (${sourceCount} eligible source(s))`,
   );
+  if (fits) {
+    const formats = Object.entries(fits.byAspect)
+      .sort((a, b) => b[1] - a[1])
+      .map(([aspect, count]) => `${count} ${aspect}`)
+      .join(", ");
+    logger.log(
+      `Fitted: ${fits.square} of ${fits.total} kept a square; formats: ${formats}` +
+        (fits.overridden > 0 ? `; ${fits.overridden} from overrides` : "") +
+        (fits.undetected > 0
+          ? `; ${fits.undetected} with no product detected`
+          : ""),
+    );
+  }
   if (failed.length > 0) {
     logger.log(`Failed (${failed.length}):`);
     for (const entry of failed) {
@@ -64,7 +100,9 @@ function sizeCell(width, height) {
 
 // Opt-in per-file CSV: one row per output entry, then one per ignored file.
 async function writeReport(reportPath, summary) {
-  const rows = [["source", "output", "rule", "source size", "output size", "status"]];
+  const rows = [
+    ["source", "output", "rule", "source size", "output size", "aspect", "fit", "status"],
+  ];
   for (const entry of summary.outputs) {
     rows.push([
       entry.sourcePath,
@@ -72,11 +110,13 @@ async function writeReport(reportPath, summary) {
       entry.rule,
       sizeCell(entry.srcWidth, entry.srcHeight),
       sizeCell(entry.width, entry.height),
+      entry.aspect,
+      entry.fitSource,
       entry.status,
     ]);
   }
   for (const entry of summary.ignored) {
-    rows.push([entry.sourcePath, "", "", "", "", "ignored"]);
+    rows.push([entry.sourcePath, "", "", "", "", "", "", "ignored"]);
   }
   await fs.mkdir(path.dirname(reportPath), { recursive: true });
   await fs.writeFile(
@@ -86,4 +126,10 @@ async function writeReport(reportPath, summary) {
   );
 }
 
-module.exports = { buildSummary, printSummary, writeReport, describeError };
+module.exports = {
+  buildSummary,
+  printSummary,
+  writeReport,
+  describeError,
+  countFits,
+};

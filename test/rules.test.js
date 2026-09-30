@@ -43,3 +43,34 @@ test("only sku-prefixed image files are eligible", () => {
   assert.equal(isEligibleFile("Thumbs.db", prefixes), false);
   assert.equal(isEligibleFile("BUN-1413081-51-0.psd", prefixes), false);
 });
+
+test("a category matcher tests the input's category label as a case-insensitive substring", () => {
+  const carport = { category: "Carport", endsWith: "-0", pad: "1:1", width: 1500 };
+  const anyCategory = { endsWith: "-0", width: 1500 };
+  const rules = [carport, anyCategory];
+
+  assert.equal(matchRule(rules, "CAR-1-51-0", "Carport Standaard Klassiek"), carport);
+  assert.equal(matchRule(rules, "CAR-1-51-0", "carport flat white"), carport);
+  assert.equal(matchRule(rules, "BUN-1-51-0", "Veranda Standaard Modern"), anyCategory);
+  assert.equal(matchRule(rules, "CAR-1-51-3", "Carport Standaard Klassiek"), null);
+  // No category given (preset-style call): a category matcher cannot pass.
+  assert.equal(matchRule(rules, "CAR-1-51-0"), anyCategory);
+});
+
+test("a category rule is shadowed by an earlier rule that does not restrict the category", () => {
+  assert.deepEqual(
+    findShadowedRules([
+      { endsWith: "-0", width: 1 },
+      { category: "Carport", endsWith: "-0", width: 1 },
+    ]),
+    [{ index: 1, shadowedBy: 0 }],
+  );
+  // The other order is fine: the narrower rule runs first.
+  assert.deepEqual(
+    findShadowedRules([
+      { category: "Carport", endsWith: "-0", width: 1 },
+      { endsWith: "-0", width: 1 },
+    ]),
+    [],
+  );
+});

@@ -26,6 +26,10 @@ function normalizeRunOptions(options = {}) {
   if (only !== null && (typeof only !== "string" || only.length === 0)) {
     throw new Error("only must be a non-empty string");
   }
+  const name = options.name ?? null;
+  if (name !== null && (typeof name !== "string" || name.length === 0)) {
+    throw new Error("name must be a non-empty string");
+  }
   const report = options.report ?? null;
   if (report !== null && (typeof report !== "string" || report.length === 0)) {
     throw new Error("report must be a non-empty path");
@@ -36,12 +40,13 @@ function normalizeRunOptions(options = {}) {
     force: options.force === true,
     limit,
     only,
+    name,
     dryRun: options.dryRun === true,
     report,
   };
 }
 
-// Case-insensitive substring filter used by --only.
+// Case-insensitive substring filter used by --only and --name.
 function matchesOnly(only, ...candidates) {
   if (only === null) return true;
   const needle = only.toLowerCase();
