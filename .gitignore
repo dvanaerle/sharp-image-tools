@@ -4,6 +4,8 @@ node_modules/
 # Build and generated output
 01_input/
 02_compressed/
+02_output/
+02_tm-actie-28-09/
 03_backup/
 archive/
 watermark/
@@ -37,4 +39,5 @@ Desktop.ini
 /google-channable-export/
 
 # Tooling scratch output
+/.scratch/
 /.playwright-mcp/
